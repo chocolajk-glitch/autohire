@@ -79,6 +79,7 @@ def run_batch(
     enable_reflection: bool = False,
     run_interview_questions: bool = False,
     llm_provider: str = "deepseek",
+    step_callback=None,
 ) -> tuple[BatchReport, BatchSummary]:
     """跑批量评估.
 
@@ -89,17 +90,27 @@ def run_batch(
         enable_reflection: 是否跑匹配度反思
         run_interview_questions: 是否跑面试出题
         llm_provider: LLM provider
+        step_callback: 可选, fn(step_name, status, **extra), 每步状态变化时调用
 
     Returns:
         (BatchReport, BatchSummary)
     """
     from agents.jd_parser import parse_jd_file, parse_jd_text
 
+    def _cb(step: str, status: str, **extra) -> None:
+        if step_callback:
+            try:
+                step_callback(step, status, **extra)
+            except Exception:
+                logger.warning("step_callback raised, ignored", exc_info=True)
+
     # 1. 解析 JD (只解析一次)
+    _cb("parse_jd", "running")
     if jd_text is not None:
         jd: ParsedJD = parse_jd_text(jd_text, provider=llm_provider)
     else:
         jd = parse_jd_file(jd_path, provider=llm_provider)
+    _cb("parse_jd", "success")
 
     t0 = time.time()
     candidate_reports: list[CandidateReport] = []
@@ -111,9 +122,11 @@ def run_batch(
     rec_buckets: dict[str, int] = {}
     top_records: list[dict] = []
 
-    for rp in resume_paths:
+    for i, rp in enumerate(resume_paths):
         rp = str(rp)
+        cand_stem = Path(rp).stem
         logger.info("[batch] processing %s", rp)
+
         ctx: PipelineContext = run_pipeline(
             jd_text_or_path=jd_text if jd_text else jd_path,
             resume_text_or_path=rp,
@@ -122,7 +135,9 @@ def run_batch(
             run_interview_questions=run_interview_questions,
             enable_reflection=enable_reflection,
             llm_provider=llm_provider,
+            step_callback=_cb,
         )
+
         if ctx.report is not None and ctx.resume is not None:
             candidate_reports.append(ctx.report)
             succeeded += 1

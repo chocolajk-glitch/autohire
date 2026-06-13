@@ -177,8 +177,16 @@ async def _run_batch_job(job_id: str, req: BatchRequest) -> None:
     state.status = "running"
     state.add_log("started")
 
+    # helper: 推 stage 事件给 SSE 客户端
+    async def push_stage(step_name: str, status: str, **extra: Any) -> None:
+        stage = {"step": step_name, "status": status, "ts": time.time(), **extra}
+        state.log.append({"event": "stage", **stage})
+        logger.info("[job %s] stage %s -> %s", job_id, step_name, status)
+
     try:
         resume_paths = [RESUMES_DIR / fn for fn in req.resume_filenames]
+        # ---- Stage 1: parse_jd (总览提示, 真正解析在 run_batch 里完成) ----
+        await push_stage("parse_jd", "running")
         for i, p in enumerate(resume_paths):
             if not p.exists():
                 state.add_log("missing_resume", path=str(p))
@@ -186,12 +194,22 @@ async def _run_batch_job(job_id: str, req: BatchRequest) -> None:
             state.current_candidate = p.stem
             state.progress = i / len(resume_paths)
             state.add_log("processing", candidate=p.stem, idx=i + 1, total=len(resume_paths))
-            await asyncio.sleep(0.05)  # 让出事件循环, 让 SSE 客户端能拿到日志
+            await asyncio.sleep(0.05)
 
         # 真正的批量 (同步, 阻塞 1-5 分钟)
         jd_path = JDS_DIR / f"{req.jd_filename}.txt" if req.jd_filename else None
-        # 包装成子线程跑, 避免阻塞事件循环
         loop = asyncio.get_running_loop()
+
+        # 包装 run_batch, 让它在每个 step 开始/完成时通过 callback 推 stage
+        def step_callback(step_name: str, status: str, **extra: Any) -> None:
+            """在同步 run_batch 中被调用的回调. 直接同步 append 到 state.log (线程安全)."""
+            stage = {"event": "stage", "step": step_name, "status": status, "ts": time.time(), **extra}
+            state.log.append(stage)
+            logger.info("[job %s] stage %s -> %s", job_id, step_name, status)
+
+        # 在 run_batch 之前先 mark parse_jd 完成
+        await push_stage("parse_jd", "success", note="JD 已在批量开始前解析, 实际耗时见 run_batch 内部 step")
+
         batch_report, summary = await loop.run_in_executor(
             None,
             lambda: run_batch(
@@ -201,6 +219,7 @@ async def _run_batch_job(job_id: str, req: BatchRequest) -> None:
                 enable_reflection=req.enable_reflection,
                 run_interview_questions=req.run_interview_questions,
                 llm_provider=req.llm_provider,
+                step_callback=step_callback,
             ),
         )
 
@@ -220,6 +239,11 @@ async def _run_batch_job(job_id: str, req: BatchRequest) -> None:
         state.finished_at = time.time()
         state.add_log("error", msg=str(e)[:200])
         logger.exception("batch job %s failed", job_id)
+
+
+async def _emit_stage(state: JobState, stage: dict) -> None:
+    """在事件循环中安全地推 stage 事件到 state.log."""
+    state.log.append({"event": "stage", **stage})
 
 
 # ============================================================

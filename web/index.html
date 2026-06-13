@@ -90,6 +90,22 @@
     .tab { padding: 8px 16px; background: #1e293b; border-radius: 6px; cursor: pointer; font-size: 13px; color: #94a3b8; border: 1px solid transparent; }
     .tab.active { background: #334155; color: #e2e8f0; border-color: #60a5fa; }
     .hint { font-size: 11px; color: #64748b; margin-top: 4px; line-height: 1.5; }
+
+    /* 5 阶段进度条 */
+    .stage-card { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 12px; padding: 20px; border: 1px solid #334155; margin-bottom: 16px; }
+    .stage-bar { display: flex; align-items: flex-start; justify-content: space-between; position: relative; }
+    .stage-bar::before { content: ''; position: absolute; top: 18px; left: 10%; right: 10%; height: 2px; background: #334155; z-index: 0; }
+    .stage-bar .stage-fill { position: absolute; top: 18px; left: 10%; height: 2px; background: linear-gradient(90deg, #3b82f6, #8b5cf6); z-index: 1; transition: width 0.5s; }
+    .stage-item { flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; z-index: 2; }
+    .stage-dot { width: 36px; height: 36px; border-radius: 50%; background: #1e293b; border: 2px solid #334155; display: flex; align-items: center; justify-content: center; font-size: 18px; transition: all 0.3s; }
+    .stage-dot.pending { color: #64748b; }
+    .stage-dot.running { color: #fff; background: #1e3a8a; border-color: #60a5fa; box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.2); animation: pulse 1.5s ease-in-out infinite; }
+    .stage-dot.success { color: #fff; background: #065f46; border-color: #10b981; }
+    .stage-dot.failed { color: #fff; background: #7f1d1d; border-color: #ef4444; }
+    @keyframes pulse { 0%, 100% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.2); } 50% { box-shadow: 0 0 0 12px rgba(59, 130, 246, 0.05); } }
+    .stage-label { font-size: 12px; color: #cbd5e1; margin-top: 8px; text-align: center; }
+    .stage-time { font-size: 10px; color: #64748b; margin-top: 2px; }
+    .stage-current { background: rgba(96, 165, 250, 0.1); border: 1px solid #60a5fa; border-radius: 8px; padding: 8px 12px; margin-top: 14px; font-size: 13px; color: #e2e8f0; display: flex; align-items: center; gap: 8px; }
   </style>
 </head>
 <body>
@@ -174,6 +190,28 @@
 
         <!-- 右侧: 实时日志 + 结果 -->
         <div>
+          <!-- 5 阶段进度条 -->
+          <div class="stage-card">
+            <h2 style="font-size: 16px; color: #cbd5e1; margin-bottom: 18px; display: flex; align-items: center; gap: 8px;">
+              📊 评估进度
+              <span v-if="isRunning" class="badge warn">运行中</span>
+              <span v-else-if="result" class="badge ok">已完成</span>
+              <span v-else class="badge info">待开始</span>
+            </h2>
+            <div class="stage-bar">
+              <div class="stage-fill" :style="{ width: stageProgressWidth + '%' }"></div>
+              <div v-for="(s, idx) in stages" :key="s.key" class="stage-item">
+                <div class="stage-dot" :class="s.status">{{ stageIcon(s) }}</div>
+                <div class="stage-label">{{ s.label }}</div>
+                <div class="stage-time">{{ stageTime(s) }}</div>
+              </div>
+            </div>
+            <div v-if="currentStageMessage" class="stage-current">
+              <span style="font-size: 16px;">⏳</span>
+              <span>{{ currentStageMessage }}</span>
+            </div>
+          </div>
+
           <div class="card">
             <h2>
               实时运行日志
@@ -316,6 +354,16 @@
         const tab = ref('ranking');
         const logBox = ref(null);
 
+        // 5 阶段进度 (从后端 SSE stage 事件驱动)
+        const STAGE_DEFS = [
+          { key: 'parse_jd', label: '解析 JD', icon: '📄' },
+          { key: 'parse_resume', label: '解析简历', icon: '📋' },
+          { key: 'match', label: '匹配 + 反思', icon: '🎯' },
+          { key: 'interview_questions_crew', label: '生成面试题', icon: '💬' },
+          { key: 'generate_report', label: '生成报告', icon: '📊' },
+        ];
+        const stages = ref(STAGE_DEFS.map(s => ({ ...s, status: 'pending', duration_ms: 0 })));
+
         const canStart = computed(() => selectedJD.value && selectedResumes.value.length > 0 && !isRunning.value);
         const statusText = computed(() => {
           if (isRunning.value) return '运行中';
@@ -327,6 +375,64 @@
           if (result.value) return 'ok';
           return 'info';
         });
+
+        // 进度条: 蓝色填充条宽度 (% 占总长度)
+        const stageProgressWidth = computed(() => {
+          const done = stages.value.filter(s => s.status === 'success' || s.status === 'failed').length;
+          const running = stages.value.find(s => s.status === 'running');
+          // 总长度 = (stages.length - 1) 段, 每段 (100 / (N-1))%
+          const N = stages.value.length;
+          const segmentPct = 100 / (N - 1);
+          let base = done * segmentPct;
+          if (running) base += segmentPct * 0.5;  // 进行中算半段
+          return Math.min(100, base);
+        });
+        const currentStageMessage = computed(() => {
+          const running = stages.value.find(s => s.status === 'running');
+          if (!running) {
+            if (result.value) {
+              const totalSec = (summary.value.duration_seconds || 0).toFixed(1);
+              return `✅ 全部完成 · 总耗时 ${totalSec} 秒`;
+            }
+            return '';
+          }
+          const cand = currentCandidateLabel.value;
+          const idx = stages.value.findIndex(s => s.status === 'running');
+          const cur = stages.value[idx];
+          const next = stages.value[idx + 1];
+          let msg = `正在执行: ${cur.icon} ${cur.label}`;
+          if (cand) msg += ` · 当前候选人: ${cand}`;
+          if (next) msg += ` · 下一阶段: ${next.icon} ${next.label}`;
+          return msg;
+        });
+        function stageIcon(s) {
+          if (s.status === 'success') return '✅';
+          if (s.status === 'failed') return '❌';
+          if (s.status === 'running') return s.icon;
+          return '○';
+        }
+        function stageTime(s) {
+          if (s.duration_ms > 0) return `${(s.duration_ms / 1000).toFixed(1)}s`;
+          if (s.status === 'pending') return '待执行';
+          if (s.status === 'running') return '进行中...';
+          return '';
+        }
+        function resetStages() {
+          stages.value = STAGE_DEFS.map(s => ({ ...s, status: 'pending', duration_ms: 0 }));
+        }
+        function _applyStageEvent(stepName, status, durationMs = 0) {
+          // 步骤名映射: parse_jd 直接对应; match_with_reflection -> match; match -> match
+          let key = stepName;
+          if (key === 'match_with_reflection' || key === 'match') key = 'match';
+          const idx = stages.value.findIndex(s => s.key === key);
+          if (idx < 0) return;
+          const cur = stages.value[idx];
+          // 如果从 running -> success/failed, 才更新 duration
+          if (cur.status === 'running' && durationMs > 0) {
+            cur.duration_ms = durationMs;
+          }
+          cur.status = status;
+        }
 
         const resumeOptions = computed(() =>
           resumes.value.map(r => ({ key: r, label: RESUME_LABELS[r] || r }))
@@ -387,6 +493,7 @@
           result.value = null;
           progress.value = 0;
           currentCandidate.value = '';
+          resetStages();
           isRunning.value = true;
 
           const resp = await fetch(`${API}/api/batch/run`, {
@@ -411,6 +518,11 @@
           const handler = (eventName) => (e) => {
             const data = JSON.parse(e.data);
             if (eventName === 'log') {
+              // 区分 stage 事件 (后端用 type: "stage" 标记)
+              if (data.event === 'stage') {
+                _applyStageEvent(data.step, data.status, data.duration_ms || 0);
+                return;  // stage 不进 log
+              }
               logs.value.push(data);
               nextTick(() => { if (logBox.value) logBox.value.scrollTop = logBox.value.scrollHeight; });
             } else if (eventName === 'progress') {
@@ -446,6 +558,7 @@
           enableReflection, runQuestions, llmProvider,
           jobId, isRunning, progress, currentCandidate, currentCandidateLabel,
           logs, result, summary, ranking, candidates, tab, logBox,
+          stages, stageProgressWidth, currentStageMessage, stageIcon, stageTime,
           canStart, statusText, statusBadgeClass,
           formatTime, formatLogMsg, recText, recConf, getRankClass, getCandidateByName,
           getJDLabel,
