@@ -17,6 +17,14 @@ env/
 data/resumes/*.pdf
 data/jds/*.txt
 data/processed/
+data/screenshot_*.png
+data/screenshot_*.jpeg
+data/uvicorn.log
+data/uvicorn.err.log
+data/frontend.log
+data/frontend.err.log
+data/eval.log
+data/eval.err.log
 *.db
 *.sqlite
 chroma_db/

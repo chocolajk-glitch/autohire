@@ -1,0 +1,322 @@
+{
+  "total_pairs": 33,
+  "total_resumes": 11,
+  "total_jds": 3,
+  "duration_seconds": 3569.7,
+  "overall_metrics": {
+    "pearson": 0.815,
+    "spearman": 0.766,
+    "mae": 20.09,
+    "rmse": 24.45
+  },
+  "per_jd_top3_hits": {
+    "backend_python_jd": {
+      "hit": 2,
+      "total": 3,
+      "system_top3": [
+        "01_zhang_san_strong_backend.pdf",
+        "05_zhou_qi_fullstack.pdf",
+        "07_zheng_ba_senior_java.pdf"
+      ],
+      "ground_truth_top3": [
+        "01_zhang_san_strong_backend.pdf",
+        "05_zhou_qi_fullstack.pdf",
+        "09_yang_shy_data_eng.pdf"
+      ]
+    },
+    "frontend_vue_jd": {
+      "hit": 2,
+      "total": 3,
+      "system_top3": [
+        "01_zhang_san_strong_backend.pdf",
+        "03_zhao_wu_strong_frontend.pdf",
+        "05_zhou_qi_fullstack.pdf"
+      ],
+      "ground_truth_top3": [
+        "03_zhao_wu_strong_frontend.pdf",
+        "05_zhou_qi_fullstack.pdf",
+        "08_chen_shi_junior_frontend.pdf"
+      ]
+    },
+    "algo_recommendation_jd": {
+      "hit": 2,
+      "total": 3,
+      "system_top3": [
+        "01_zhang_san_strong_backend.pdf",
+        "04_sun_li_strong_algo.pdf",
+        "06_wu_junior_algo.pdf"
+      ],
+      "ground_truth_top3": [
+        "04_sun_li_strong_algo.pdf",
+        "06_wu_junior_algo.pdf",
+        "09_yang_shy_data_eng.pdf"
+      ]
+    }
+  },
+  "results": [
+    {
+      "jd": "backend_python_jd",
+      "resume_file": "01_zhang_san_strong_backend.pdf",
+      "candidate_name": "Wang Lei",
+      "system_score": 73,
+      "ground_truth_score": 90,
+      "diff": -17
+    },
+    {
+      "jd": "backend_python_jd",
+      "resume_file": "02_li_si_mid_backend.pdf",
+      "candidate_name": "Li Si",
+      "system_score": 22,
+      "ground_truth_score": 35,
+      "diff": -13
+    },
+    {
+      "jd": "backend_python_jd",
+      "resume_file": "03_zhao_wu_strong_frontend.pdf",
+      "candidate_name": "Zhao Wu",
+      "system_score": 25,
+      "ground_truth_score": 30,
+      "diff": -5
+    },
+    {
+      "jd": "backend_python_jd",
+      "resume_file": "04_sun_li_strong_algo.pdf",
+      "candidate_name": "Sun Li",
+      "system_score": 20,
+      "ground_truth_score": 50,
+      "diff": -30
+    },
+    {
+      "jd": "backend_python_jd",
+      "resume_file": "05_zhou_qi_fullstack.pdf",
+      "candidate_name": "Zhou Qi",
+      "system_score": 52,
+      "ground_truth_score": 60,
+      "diff": -8
+    },
+    {
+      "jd": "backend_python_jd",
+      "resume_file": "06_wu_junior_algo.pdf",
+      "candidate_name": "Wu Xiao",
+      "system_score": 12,
+      "ground_truth_score": 40,
+      "diff": -28
+    },
+    {
+      "jd": "backend_python_jd",
+      "resume_file": "07_zheng_ba_senior_java.pdf",
+      "candidate_name": "Zheng Jiu",
+      "system_score": 48,
+      "ground_truth_score": 45,
+      "diff": 3
+    },
+    {
+      "jd": "backend_python_jd",
+      "resume_file": "08_chen_shi_junior_frontend.pdf",
+      "candidate_name": "Chen Shi",
+      "system_score": 4,
+      "ground_truth_score": 20,
+      "diff": -16
+    },
+    {
+      "jd": "backend_python_jd",
+      "resume_file": "09_yang_shy_data_eng.pdf",
+      "candidate_name": "Yang Shi",
+      "system_score": 26,
+      "ground_truth_score": 55,
+      "diff": -29
+    },
+    {
+      "jd": "backend_python_jd",
+      "resume_file": "10_xu_shiyong_weak.pdf",
+      "candidate_name": "Xu Shi",
+      "system_score": 2,
+      "ground_truth_score": 5,
+      "diff": -3
+    },
+    {
+      "jd": "backend_python_jd",
+      "resume_file": "11_du_yijian_real_java.pdf",
+      "candidate_name": "Du Yijian",
+      "system_score": 8,
+      "ground_truth_score": 50,
+      "diff": -42
+    },
+    {
+      "jd": "frontend_vue_jd",
+      "resume_file": "01_zhang_san_strong_backend.pdf",
+      "candidate_name": "Wang Lei",
+      "system_score": 25,
+      "ground_truth_score": 45,
+      "diff": -20
+    },
+    {
+      "jd": "frontend_vue_jd",
+      "resume_file": "02_li_si_mid_backend.pdf",
+      "candidate_name": "Li Si",
+      "system_score": 15,
+      "ground_truth_score": 20,
+      "diff": -5
+    },
+    {
+      "jd": "frontend_vue_jd",
+      "resume_file": "03_zhao_wu_strong_frontend.pdf",
+      "candidate_name": "Zhao Wu",
+      "system_score": 80,
+      "ground_truth_score": 92,
+      "diff": -12
+    },
+    {
+      "jd": "frontend_vue_jd",
+      "resume_file": "04_sun_li_strong_algo.pdf",
+      "candidate_name": "Sun Li",
+      "system_score": 9,
+      "ground_truth_score": 25,
+      "diff": -16
+    },
+    {
+      "jd": "frontend_vue_jd",
+      "resume_file": "05_zhou_qi_fullstack.pdf",
+      "candidate_name": "Zhou Qi",
+      "system_score": 37,
+      "ground_truth_score": 60,
+      "diff": -23
+    },
+    {
+      "jd": "frontend_vue_jd",
+      "resume_file": "06_wu_junior_algo.pdf",
+      "candidate_name": "Wu Xiao",
+      "system_score": 10,
+      "ground_truth_score": 15,
+      "diff": -5
+    },
+    {
+      "jd": "frontend_vue_jd",
+      "resume_file": "07_zheng_ba_senior_java.pdf",
+      "candidate_name": "Zheng Jiu",
+      "system_score": 19,
+      "ground_truth_score": 15,
+      "diff": 4
+    },
+    {
+      "jd": "frontend_vue_jd",
+      "resume_file": "08_chen_shi_junior_frontend.pdf",
+      "candidate_name": "Chen Shi",
+      "system_score": 13,
+      "ground_truth_score": 70,
+      "diff": -57
+    },
+    {
+      "jd": "frontend_vue_jd",
+      "resume_file": "09_yang_shy_data_eng.pdf",
+      "candidate_name": "Yang Shi",
+      "system_score": 4,
+      "ground_truth_score": 20,
+      "diff": -16
+    },
+    {
+      "jd": "frontend_vue_jd",
+      "resume_file": "10_xu_shiyong_weak.pdf",
+      "candidate_name": "Xu Shi",
+      "system_score": 0,
+      "ground_truth_score": 5,
+      "diff": -5
+    },
+    {
+      "jd": "frontend_vue_jd",
+      "resume_file": "11_du_yijian_real_java.pdf",
+      "candidate_name": "Du Yijian",
+      "system_score": 14,
+      "ground_truth_score": 45,
+      "diff": -31
+    },
+    {
+      "jd": "algo_recommendation_jd",
+      "resume_file": "01_zhang_san_strong_backend.pdf",
+      "candidate_name": "Wang Lei",
+      "system_score": 27,
+      "ground_truth_score": 55,
+      "diff": -28
+    },
+    {
+      "jd": "algo_recommendation_jd",
+      "resume_file": "02_li_si_mid_backend.pdf",
+      "candidate_name": "Li Si",
+      "system_score": 0,
+      "ground_truth_score": 25,
+      "diff": -25
+    },
+    {
+      "jd": "algo_recommendation_jd",
+      "resume_file": "03_zhao_wu_strong_frontend.pdf",
+      "candidate_name": "Zhao Wu",
+      "system_score": 0,
+      "ground_truth_score": 20,
+      "diff": -20
+    },
+    {
+      "jd": "algo_recommendation_jd",
+      "resume_file": "04_sun_li_strong_algo.pdf",
+      "candidate_name": "Sun Li",
+      "system_score": 92,
+      "ground_truth_score": 95,
+      "diff": -3
+    },
+    {
+      "jd": "algo_recommendation_jd",
+      "resume_file": "05_zhou_qi_fullstack.pdf",
+      "candidate_name": "Zhou Qi",
+      "system_score": 12,
+      "ground_truth_score": 40,
+      "diff": -28
+    },
+    {
+      "jd": "algo_recommendation_jd",
+      "resume_file": "06_wu_junior_algo.pdf",
+      "candidate_name": "Wu Xiao",
+      "system_score": 27,
+      "ground_truth_score": 65,
+      "diff": -38
+    },
+    {
+      "jd": "algo_recommendation_jd",
+      "resume_file": "07_zheng_ba_senior_java.pdf",
+      "candidate_name": "Zheng Jiu",
+      "system_score": 5,
+      "ground_truth_score": 40,
+      "diff": -35
+    },
+    {
+      "jd": "algo_recommendation_jd",
+      "resume_file": "08_chen_shi_junior_frontend.pdf",
+      "candidate_name": "Chen Shi",
+      "system_score": 0,
+      "ground_truth_score": 15,
+      "diff": -15
+    },
+    {
+      "jd": "algo_recommendation_jd",
+      "resume_file": "09_yang_shy_data_eng.pdf",
+      "candidate_name": "Yang Shi",
+      "system_score": 12,
+      "ground_truth_score": 60,
+      "diff": -48
+    },
+    {
+      "jd": "algo_recommendation_jd",
+      "resume_file": "10_xu_shiyong_weak.pdf",
+      "candidate_name": "Xu Shi",
+      "system_score": 0,
+      "ground_truth_score": 5,
+      "diff": -5
+    },
+    {
+      "jd": "algo_recommendation_jd",
+      "resume_file": "11_du_yijian_real_java.pdf",
+      "candidate_name": "Duyijian",
+      "system_score": 0,
+      "ground_truth_score": 30,
+      "diff": -30
+    }
+  ]
+}
