@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AutoHire · 多 Agent 智能招聘筛选系统</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 24px;
+    }
+    .container { max-width: 1280px; margin: 0 auto; }
+    header { text-align: center; padding: 32px 0 24px; border-bottom: 1px solid #1e293b; margin-bottom: 24px; }
+    h1 { font-size: 32px; background: linear-gradient(135deg, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .subtitle { color: #94a3b8; margin-top: 8px; font-size: 14px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+    .card { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; }
+    .card h2 { font-size: 16px; color: #cbd5e1; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+    .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+    .badge.ok { background: #065f46; color: #6ee7b7; }
+    .badge.warn { background: #78350f; color: #fcd34d; }
+    .badge.err { background: #7f1d1d; color: #fca5a5; }
+    .badge.info { background: #1e3a8a; color: #93c5fd; }
+    select, input[type="text"] {
+      width: 100%; padding: 10px; background: #0f172a; color: #e2e8f0;
+      border: 1px solid #334155; border-radius: 6px; font-size: 14px;
+    }
+    .resume-list { max-height: 320px; overflow-y: auto; background: #0f172a; border-radius: 6px; padding: 8px; }
+    .resume-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer; }
+    .resume-item:hover { background: #1e293b; }
+    .resume-item input { flex-shrink: 0; }
+    .resume-item .name { font-size: 13px; }
+    button {
+      width: 100%; padding: 12px; background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600;
+      cursor: pointer; transition: all 0.2s;
+    }
+    button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4); }
+    button:disabled { background: #475569; cursor: not-allowed; opacity: 0.6; }
+    .progress-wrap { margin-top: 12px; }
+    .progress-bar { height: 8px; background: #0f172a; border-radius: 4px; overflow: hidden; }
+    .progress-fill { height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6); transition: width 0.3s; }
+    .progress-text { font-size: 12px; color: #94a3b8; margin-top: 4px; text-align: center; }
+    .log {
+      background: #0f172a; border-radius: 6px; padding: 12px; height: 320px;
+      overflow-y: auto; font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 12px; line-height: 1.6;
+    }
+    .log .ts { color: #64748b; }
+    .log .ev { color: #60a5fa; font-weight: 600; }
+    .log .msg { color: #cbd5e1; }
+    .ranking { margin-top: 16px; }
+    .rank-row {
+      display: grid; grid-template-columns: 40px 1fr 100px 100px 100px;
+      gap: 10px; padding: 12px; align-items: center; background: #0f172a;
+      border-radius: 6px; margin-bottom: 8px; border-left: 3px solid #3b82f6;
+    }
+    .rank-row.top1 { border-left-color: #fbbf24; background: linear-gradient(90deg, rgba(251, 191, 36, 0.1), transparent); }
+    .rank-row.top2 { border-left-color: #cbd5e1; }
+    .rank-row.top3 { border-left-color: #d97706; }
+    .rank-row .pos { font-size: 20px; font-weight: 700; color: #94a3b8; text-align: center; }
+    .rank-row .pos.top { color: #fbbf24; }
+    .rank-row .name { font-weight: 600; }
+    .rank-row .score { font-size: 18px; font-weight: 700; color: #60a5fa; }
+    .empty { text-align: center; color: #64748b; padding: 40px 0; font-size: 14px; }
+    .cand-card {
+      background: #0f172a; border-radius: 8px; padding: 14px; margin-bottom: 10px;
+      border: 1px solid #334155; cursor: pointer; transition: all 0.2s;
+    }
+    .cand-card:hover { border-color: #60a5fa; }
+    .cand-card .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .cand-card .name { font-weight: 600; font-size: 15px; }
+    .cand-card .rec { font-size: 12px; padding: 3px 10px; border-radius: 12px; }
+    .cand-card .rec.strong_recommend { background: #065f46; color: #6ee7b7; }
+    .cand-card .rec.recommend { background: #1e3a8a; color: #93c5fd; }
+    .cand-card .rec.neutral { background: #78350f; color: #fcd34d; }
+    .cand-card .rec.not_recommend { background: #7f1d1d; color: #fca5a5; }
+    .cand-card .reason { font-size: 13px; color: #94a3b8; line-height: 1.5; }
+    .cand-card.hitl { border-color: #f59e0b; }
+    .hitl-tag { display: inline-block; margin-left: 8px; padding: 1px 8px; background: #78350f; color: #fcd34d; border-radius: 10px; font-size: 10px; }
+    .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+    .stat { background: #0f172a; padding: 12px; border-radius: 6px; text-align: center; }
+    .stat .num { font-size: 24px; font-weight: 700; color: #60a5fa; }
+    .stat .lbl { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+    details { margin-top: 8px; }
+    summary { cursor: pointer; font-size: 13px; color: #94a3b8; }
+    .tab-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+    .tab { padding: 8px 16px; background: #1e293b; border-radius: 6px; cursor: pointer; font-size: 13px; color: #94a3b8; border: 1px solid transparent; }
+    .tab.active { background: #334155; color: #e2e8f0; border-color: #60a5fa; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="container">
+      <header>
+        <h1>AutoHire · 多 Agent 智能招聘筛选系统</h1>
+        <div class="subtitle">AutoGen + CrewAI + Qwen/MiniMax/DeepSeek · Planner · Self-Reflection · HITL</div>
+      </header>
+
+      <div class="grid">
+        <!-- 左侧: 配置 + 控制 -->
+        <div>
+          <div class="card">
+            <h2>① 选择 JD</h2>
+            <select v-model="selectedJD">
+              <option value="">-- 选择已上传的 JD --</option>
+              <option v-for="jd in jds" :key="jd" :value="jd">{{ jd }}</option>
+            </select>
+            <div style="margin-top: 8px; font-size: 12px; color: #94a3b8;">
+              <span v-if="selectedJD">✓ 已选: {{ selectedJD }}</span>
+              <span v-else>从 data/jds/ 目录读取</span>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top: 16px;">
+            <h2>② 选择简历 ({{ selectedResumes.length }} / {{ resumes.length }})</h2>
+            <div class="resume-list">
+              <label v-for="r in resumes" :key="r" class="resume-item">
+                <input type="checkbox" :value="r" v-model="selectedResumes" />
+                <span class="name">{{ r }}</span>
+              </label>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 8px;">
+              <button style="width: auto; padding: 6px 12px; font-size: 12px; background: #334155;" @click="selectAll">全选</button>
+              <button style="width: auto; padding: 6px 12px; font-size: 12px; background: #334155;" @click="selectNone">清空</button>
+              <button style="width: auto; padding: 6px 12px; font-size: 12px; background: #334155;" @click="selectSmart">智能 (3 份)</button>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top: 16px;">
+            <h2>③ 选项</h2>
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #cbd5e1;">
+              <input type="checkbox" v-model="enableReflection" /> 启用 Self-Reflection
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: #cbd5e1; margin-top: 6px;">
+              <input type="checkbox" v-model="runQuestions" /> 生成面试题 (CrewAI)
+            </label>
+            <div style="margin-top: 10px; font-size: 12px; color: #94a3b8;">
+              LLM: <span style="color: #60a5fa;">{{ llmProvider }}</span>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top: 16px;">
+            <button :disabled="!canStart" @click="startBatch">
+              {{ isRunning ? '运行中...' : '开始批量评估' }}
+            </button>
+            <div v-if="jobId" class="progress-wrap">
+              <div class="progress-bar">
+                <div class="progress-fill" :style="{ width: (progress * 100) + '%' }"></div>
+              </div>
+              <div class="progress-text">
+                进度 {{ (progress * 100).toFixed(0) }}% · {{ currentCandidate || '准备中' }}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧: 实时日志 + 结果 -->
+        <div>
+          <div class="card">
+            <h2>
+              实时日志
+              <span class="badge" :class="statusBadgeClass">{{ statusText }}</span>
+            </h2>
+            <div class="log" ref="logBox">
+              <div v-for="(l, i) in logs" :key="i">
+                <span class="ts">{{ formatTime(l.ts) }}</span>
+                <span class="ev"> [{{ l.event }}]</span>
+                <span class="msg"> {{ formatLogMsg(l) }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" style="margin-top: 16px;" v-if="result">
+            <h2>评估结果</h2>
+            <div class="stat-grid">
+              <div class="stat">
+                <div class="num">{{ summary.succeeded }}</div>
+                <div class="lbl">成功</div>
+              </div>
+              <div class="stat">
+                <div class="num">{{ summary.avg_score }}</div>
+                <div class="lbl">平均分</div>
+              </div>
+              <div class="stat">
+                <div class="num">{{ summary.median_score }}</div>
+                <div class="lbl">中位数</div>
+              </div>
+              <div class="stat">
+                <div class="num">{{ summary.hitl_count }}</div>
+                <div class="lbl">需 HITL</div>
+              </div>
+            </div>
+
+            <div class="tab-bar">
+              <div class="tab" :class="{ active: tab === 'ranking' }" @click="tab = 'ranking'">排行榜</div>
+              <div class="tab" :class="{ active: tab === 'cards' }" @click="tab = 'cards'">详情卡片</div>
+            </div>
+
+            <div v-if="tab === 'ranking'" class="ranking">
+              <div v-for="(name, i) in ranking" :key="name" class="rank-row" :class="getRankClass(i)">
+                <div class="pos" :class="{ top: i < 3 }">{{ i + 1 }}</div>
+                <div class="name">
+                  {{ name }}
+                  <span v-if="getCandidateByName(name)?.needs_human_review" class="hitl-tag">需 HITL</span>
+                </div>
+                <div class="score">{{ getCandidateByName(name)?.match.overall_score ?? '-' }}</div>
+                <div class="rec" :class="getCandidateByName(name)?.recommendation">
+                  {{ recText(getCandidateByName(name)?.recommendation) }}
+                </div>
+                <div style="font-size: 11px; color: #64748b; text-align: right;">
+                  {{ recConf(getCandidateByName(name)?.match.confidence) }}
+                </div>
+              </div>
+            </div>
+
+            <div v-if="tab === 'cards'">
+              <div v-for="c in candidates" :key="c.candidate_name" class="cand-card" :class="{ hitl: c.needs_human_review }">
+                <div class="head">
+                  <div class="name">
+                    {{ c.candidate_name }}
+                    <span v-if="c.needs_human_review" class="hitl-tag">HITL</span>
+                  </div>
+                  <div class="rec" :class="c.recommendation">{{ recText(c.recommendation) }}</div>
+                </div>
+                <div class="reason">
+                  <strong style="color: #60a5fa;">{{ c.match.overall_score }}分</strong>
+                  · {{ c.recommendation_reason }}
+                </div>
+                <details>
+                  <summary>查看 strengths / weaknesses</summary>
+                  <div style="margin-top: 8px; font-size: 12px; color: #94a3b8;">
+                    <div><strong style="color: #6ee7b7;">✓ Strengths:</strong> {{ (c.match.strengths || []).join('; ') }}</div>
+                    <div style="margin-top: 4px;"><strong style="color: #fca5a5;">✗ Weaknesses:</strong> {{ (c.match.weaknesses || []).join('; ') }}</div>
+                    <div v-if="c.match.reflection_note" style="margin-top: 4px;"><strong style="color: #a78bfa;">⟳ Reflection:</strong> {{ c.match.reflection_note }}</div>
+                  </div>
+                </details>
+              </div>
+            </div>
+          </div>
+
+          <div v-else-if="!isRunning && !result" class="card" style="text-align: center; padding: 60px 20px;">
+            <div class="empty">选择 JD + 简历后点击 "开始批量评估"</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const { createApp, ref, computed, nextTick, watch } = Vue;
+
+    createApp({
+      setup() {
+        const API = 'http://127.0.0.1:8765';
+        const jds = ref([]);
+        const resumes = ref([]);
+        const selectedJD = ref('');
+        const selectedResumes = ref([]);
+        const enableReflection = ref(false);
+        const runQuestions = ref(false);
+        const llmProvider = ref('deepseek');
+
+        const jobId = ref(null);
+        const isRunning = ref(false);
+        const progress = ref(0);
+        const currentCandidate = ref('');
+        const logs = ref([]);
+        const result = ref(null);
+        const summary = ref({});
+        const ranking = ref([]);
+        const candidates = ref([]);
+        const tab = ref('ranking');
+        const logBox = ref(null);
+
+        const canStart = computed(() => selectedJD.value && selectedResumes.value.length > 0 && !isRunning.value);
+        const statusText = computed(() => isRunning.value ? 'RUNNING' : (result.value ? 'DONE' : 'IDLE'));
+        const statusBadgeClass = computed(() => {
+          if (isRunning.value) return 'warn';
+          if (result.value) return 'ok';
+          return 'info';
+        });
+
+        function formatTime(ts) { return new Date(ts * 1000).toLocaleTimeString('en-GB'); }
+        function formatLogMsg(l) {
+          if (l.event === 'processing') return `${l.candidate} (${l.idx}/${l.total})`;
+          if (l.event === 'done') return `avg=${(l.avg_score || 0).toFixed(1)} succeeded=${l.succeeded} failed=${l.failed}`;
+          if (l.event === 'hitl_submitted') return `submitted ${l.count} candidates for HR review`;
+          if (l.event === 'error') return l.msg;
+          return '';
+        }
+        function recText(r) {
+          return { strong_recommend: '强烈推荐', recommend: '推荐', neutral: '中性', not_recommend: '不推荐' }[r] || r;
+        }
+        function recConf(c) { return { high: '高置信度', medium: '中置信度', low: '低置信度' }[c] || c; }
+        function getRankClass(i) { return i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : ''; }
+        function getCandidateByName(name) { return candidates.value.find(c => c.candidate_name === name); }
+
+        function selectAll() { selectedResumes.value = [...resumes.value]; }
+        function selectNone() { selectedResumes.value = []; }
+        function selectSmart() {
+          // 选 1 强 + 1 中 + 1 弱
+          const strong = resumes.value.find(r => r.includes('strong'));
+          const mid = resumes.value.find(r => r.includes('fullstack') || r.includes('data_eng'));
+          const weak = resumes.value.find(r => r.includes('weak'));
+          selectedResumes.value = [strong, mid, weak].filter(Boolean);
+        }
+
+        async function loadData() {
+          const [jdsR, resumesR] = await Promise.all([
+            fetch(`${API}/api/jd`).then(r => r.json()),
+            fetch(`${API}/api/resumes`).then(r => r.json()),
+          ]);
+          jds.value = jdsR;
+          resumes.value = resumesR;
+          if (jds.value.length > 0) selectedJD.value = jds.value[0];
+        }
+
+        async function startBatch() {
+          logs.value = [];
+          result.value = null;
+          progress.value = 0;
+          currentCandidate.value = '';
+          isRunning.value = true;
+
+          const resp = await fetch(`${API}/api/batch/run`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jd_filename: selectedJD.value,
+              resume_filenames: selectedResumes.value,
+              enable_reflection: enableReflection.value,
+              run_interview_questions: runQuestions.value,
+              llm_provider: llmProvider.value,
+              auto_submit_hitl: true,
+            }),
+          });
+          const data = await resp.json();
+          jobId.value = data.job_id;
+          listenSSE(data.job_id);
+        }
+
+        function listenSSE(jid) {
+          const es = new EventSource(`${API}/api/batch/${jid}/stream`);
+          const handler = (eventName) => (e) => {
+            const data = JSON.parse(e.data);
+            if (eventName === 'log') {
+              logs.value.push(data);
+              nextTick(() => { if (logBox.value) logBox.value.scrollTop = logBox.value.scrollHeight; });
+            } else if (eventName === 'progress') {
+              progress.value = data.progress;
+              currentCandidate.value = data.current_candidate;
+            } else if (eventName === 'status') {
+              if (data.summary) summary.value = data.summary;
+            } else if (eventName === 'result') {
+              summary.value = data.summary;
+              ranking.value = data.ranking;
+              candidates.value = data.candidates;
+              result.value = data;
+            } else if (eventName === 'end') {
+              isRunning.value = false;
+              es.close();
+            }
+          };
+          es.addEventListener('status', handler('status'));
+          es.addEventListener('log', handler('log'));
+          es.addEventListener('progress', handler('progress'));
+          es.addEventListener('result', handler('result'));
+          es.addEventListener('end', handler('end'));
+        }
+
+        watch(logs, () => {
+          nextTick(() => { if (logBox.value) logBox.value.scrollTop = logBox.value.scrollHeight; });
+        });
+
+        loadData();
+
+        return {
+          jds, resumes, selectedJD, selectedResumes,
+          enableReflection, runQuestions, llmProvider,
+          jobId, isRunning, progress, currentCandidate,
+          logs, result, summary, ranking, candidates, tab, logBox,
+          canStart, statusText, statusBadgeClass,
+          formatTime, formatLogMsg, recText, recConf, getRankClass, getCandidateByName,
+          selectAll, selectNone, selectSmart, startBatch,
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
