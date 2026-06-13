@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, field_validator
 class JDRequirement(BaseModel):
     """JD 的一条具体要求 (必备技能 / 加分项 / 经验等)."""
     category: Literal["required_skill", "nice_to_have", "experience", "education", "responsibility", "other"]
-    content: str = Field(min_length=1, max_length=500)
+    description: str = Field(min_length=1, max_length=500)
     weight: int = Field(ge=1, le=10, description="权重 1-10, 越大越重要")
     is_must_have: bool = False
 
@@ -26,18 +26,19 @@ class ParsedJD(BaseModel):
     company: str | None = None
     salary_range: str | None = None
     location: str | None = None
-    experience_years: tuple[int, int] | None = Field(default=None, description="(min, max)")
+    experience_years_min: int | None = Field(default=None, ge=0, le=60, description="最低经验年限")
+    experience_years_max: int | None = Field(default=None, ge=0, le=60, description="最高经验年限")
     requirements: list[JDRequirement] = Field(min_length=1, max_length=20)
     summary: str = Field(min_length=10, max_length=1000)
 
-    @field_validator("experience_years")
+    @field_validator("experience_years_max")
     @classmethod
-    def _check_exp_range(cls, v: tuple[int, int] | None) -> tuple[int, int] | None:
+    def _check_exp_range(cls, v: int | None, info) -> int | None:
         if v is None:
             return v
-        lo, hi = v
-        if lo < 0 or hi < lo:
-            raise ValueError(f"invalid experience range: {v}")
+        lo = info.data.get("experience_years_min")
+        if lo is not None and v < lo:
+            raise ValueError(f"experience_years_max {v} < min {lo}")
         return v
 
 

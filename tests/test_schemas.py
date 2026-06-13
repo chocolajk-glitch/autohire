@@ -23,7 +23,7 @@ class TestParsedJD:
     def test_valid_minimal(self):
         jd = ParsedJD(
             job_title="后端工程师",
-            requirements=[JDRequirement(category="required_skill", content="Python", weight=8, is_must_have=True)],
+            requirements=[JDRequirement(category="required_skill", description="Python", weight=8, is_must_have=True)],
             summary="我们正在招一位后端工程师, 负责服务端开发。",
         )
         assert jd.job_title == "后端工程师"
@@ -31,20 +31,30 @@ class TestParsedJD:
 
     def test_invalid_weight(self):
         with pytest.raises(ValidationError):
-            JDRequirement(category="required_skill", content="Python", weight=11)
+            JDRequirement(category="required_skill", description="Python", weight=11)
 
     def test_invalid_experience_range(self):
         with pytest.raises(ValidationError):
             ParsedJD(
                 job_title="X",
-                requirements=[JDRequirement(category="required_skill", content="x", weight=1)],
+                requirements=[JDRequirement(category="required_skill", description="x", weight=1)],
                 summary="xxxxxxxxxx",
-                experience_years=(5, 2),  # min > max
+                experience_years_min=5,
+                experience_years_max=2,  # max < min
             )
 
     def test_empty_requirements_rejected(self):
         with pytest.raises(ValidationError):
             ParsedJD(job_title="X", requirements=[], summary="summary text here")
+
+    def test_experience_years_optional(self):
+        jd = ParsedJD(
+            job_title="X",
+            requirements=[JDRequirement(category="required_skill", description="x", weight=1)],
+            summary="xxxxxxxxxx",
+        )
+        assert jd.experience_years_min is None
+        assert jd.experience_years_max is None
 
 
 # ===== ParsedResume =====
