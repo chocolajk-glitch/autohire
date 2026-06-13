@@ -1,0 +1,57 @@
+{
+  "01_zhang_san_strong_backend.pdf": {
+    "backend_python_jd": 90,
+    "frontend_vue_jd": 45,
+    "algo_recommendation_jd": 55
+  },
+  "02_li_si_mid_backend.pdf": {
+    "backend_python_jd": 35,
+    "frontend_vue_jd": 20,
+    "algo_recommendation_jd": 25
+  },
+  "03_zhao_wu_strong_frontend.pdf": {
+    "backend_python_jd": 30,
+    "frontend_vue_jd": 92,
+    "algo_recommendation_jd": 20
+  },
+  "04_sun_li_strong_algo.pdf": {
+    "backend_python_jd": 50,
+    "frontend_vue_jd": 25,
+    "algo_recommendation_jd": 95
+  },
+  "05_zhou_qi_fullstack.pdf": {
+    "backend_python_jd": 60,
+    "frontend_vue_jd": 60,
+    "algo_recommendation_jd": 40
+  },
+  "06_wu_junior_algo.pdf": {
+    "backend_python_jd": 40,
+    "frontend_vue_jd": 15,
+    "algo_recommendation_jd": 65
+  },
+  "07_zheng_ba_senior_java.pdf": {
+    "backend_python_jd": 45,
+    "frontend_vue_jd": 15,
+    "algo_recommendation_jd": 40
+  },
+  "08_chen_shi_junior_frontend.pdf": {
+    "backend_python_jd": 20,
+    "frontend_vue_jd": 70,
+    "algo_recommendation_jd": 15
+  },
+  "09_yang_shy_data_eng.pdf": {
+    "backend_python_jd": 55,
+    "frontend_vue_jd": 20,
+    "algo_recommendation_jd": 60
+  },
+  "10_xu_shiyong_weak.pdf": {
+    "backend_python_jd": 5,
+    "frontend_vue_jd": 5,
+    "algo_recommendation_jd": 5
+  },
+  "11_du_yijian_real_java.pdf": {
+    "backend_python_jd": 50,
+    "frontend_vue_jd": 45,
+    "algo_recommendation_jd": 30
+  }
+}
