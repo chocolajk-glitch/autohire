@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "autohire"
+version = "0.1.0"
+description = "Multi-Agent intelligent resume screening system (AutoGen + CrewAI)"
+requires-python = ">=3.10"
+readme = "README.md"
+
+[tool.setuptools]
+py-modules = []
