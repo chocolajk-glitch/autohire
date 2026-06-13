@@ -119,10 +119,10 @@ class MatchResult(BaseModel):
 # ============================================================
 class InterviewQuestion(BaseModel):
     question: str = Field(min_length=10, max_length=500)
-    category: Literal["technical", "project", "behavioral", "system_design", "coding"]
+    category: Literal["technical", "project", "behavioral", "system_design", "coding", "other"]
     difficulty: Literal["easy", "medium", "hard"]
     target_skill: str = Field(description="这道题主要考察候选人哪方面能力")
-    expected_answer_outline: str | None = None
+    expected_answer_outline: str | list[str] | None = None
 
 
 class InterviewQuestionSet(BaseModel):
