@@ -1,0 +1,24 @@
+Senior Recommendation Algorithm Engineer - Beijing
+
+We are looking for a senior recommendation algorithm engineer to join our content team.
+
+Requirements:
+- 3+ years of experience in recommendation systems or search ranking
+- Strong knowledge of DNN, multi-task learning, and embedding models
+- Experience with PyTorch or TensorFlow
+- Familiar with A/B testing and offline metrics (AUC, NDCG, CTR)
+- Master's degree or above in CS, Math, or related field
+- Publications at RecSys / SIGIR / KDD is a strong plus
+
+Nice to have:
+- Experience with large-scale feature stores
+- Multi-modal learning experience
+- C++ / CUDA for performance-critical code
+
+Responsibilities:
+- Design and deploy recommendation models
+- Lead A/B testing and drive metric improvements
+- Collaborate with engineering team on system design
+- Publish papers and contribute to the community
+
+Salary: 40K-70K RMB/month

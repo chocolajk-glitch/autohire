@@ -1,0 +1,24 @@
+Senior Vue 3 Frontend Engineer - Hangzhou
+
+We are looking for a senior Vue 3 frontend engineer to join our product team.
+
+Requirements:
+- 3+ years of Vue.js development experience, with at least 1 year on Vue 3
+- Strong knowledge of TypeScript and modern JavaScript (ES6+)
+- Experience with state management (Pinia or Vuex)
+- Familiar with build tools (Vite or Webpack)
+- Experience with component library design
+- Bachelor's degree in Computer Science or related field
+
+Nice to have:
+- React experience
+- ECharts or data visualization experience
+- Performance optimization experience
+
+Responsibilities:
+- Build and maintain large-scale SPAs
+- Design reusable component libraries
+- Mentor junior engineers
+- Collaborate with backend team on API design
+
+Salary: 25K-45K RMB/month

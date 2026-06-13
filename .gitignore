@@ -25,6 +25,15 @@ data/frontend.log
 data/frontend.err.log
 data/eval.log
 data/eval.err.log
+data/vite.log
+data/vite.err.log
+data/run_dev.out
+data/run_dev.err
 *.db
 *.sqlite
 chroma_db/
+
+# Frontend - 排除 node_modules 和构建产物
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/

@@ -1,0 +1,102 @@
+/* AutoHire 前端样式 - 深色主题 */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: #0f172a; color: #e2e8f0; min-height: 100vh; padding: 24px;
+}
+.container { max-width: 1280px; margin: 0 auto; }
+header { text-align: center; padding: 32px 0 24px; border-bottom: 1px solid #1e293b; margin-bottom: 24px; }
+h1 { font-size: 32px; background: linear-gradient(135deg, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+.subtitle { color: #94a3b8; margin-top: 8px; font-size: 14px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+.card { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; }
+.card h2 { font-size: 16px; color: #cbd5e1; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+.badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+.badge.ok { background: #065f46; color: #6ee7b7; }
+.badge.warn { background: #78350f; color: #fcd34d; }
+.badge.err { background: #7f1d1d; color: #fca5a5; }
+.badge.info { background: #1e3a8a; color: #93c5fd; }
+select, input[type="text"] {
+  width: 100%; padding: 10px; background: #0f172a; color: #e2e8f0;
+  border: 1px solid #334155; border-radius: 6px; font-size: 14px;
+}
+.resume-list { max-height: 320px; overflow-y: auto; background: #0f172a; border-radius: 6px; padding: 8px; }
+.resume-item { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer; }
+.resume-item:hover { background: #1e293b; }
+.resume-item input { flex-shrink: 0; }
+.resume-item .name { font-size: 13px; }
+button {
+  width: 100%; padding: 12px; background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s;
+}
+button:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4); }
+button:disabled { background: #475569; cursor: not-allowed; opacity: 0.6; }
+.progress-wrap { margin-top: 12px; }
+.progress-bar { height: 8px; background: #0f172a; border-radius: 4px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, #3b82f6, #8b5cf6); transition: width 0.3s; }
+.progress-text { font-size: 12px; color: #94a3b8; margin-top: 4px; text-align: center; }
+.log {
+  background: #0f172a; border-radius: 6px; padding: 12px; height: 320px;
+  overflow-y: auto; font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 12px; line-height: 1.6;
+}
+.log .ts { color: #64748b; }
+.log .ev { color: #60a5fa; font-weight: 600; }
+.log .msg { color: #cbd5e1; }
+.ranking { margin-top: 16px; }
+.rank-row {
+  display: grid; grid-template-columns: 40px 1fr 100px 100px 100px;
+  gap: 10px; padding: 12px; align-items: center; background: #0f172a;
+  border-radius: 6px; margin-bottom: 8px; border-left: 3px solid #3b82f6;
+}
+.rank-row.top1 { border-left-color: #fbbf24; background: linear-gradient(90deg, rgba(251, 191, 36, 0.1), transparent); }
+.rank-row.top2 { border-left-color: #cbd5e1; }
+.rank-row.top3 { border-left-color: #d97706; }
+.rank-row .pos { font-size: 20px; font-weight: 700; color: #94a3b8; text-align: center; }
+.rank-row .pos.top { color: #fbbf24; }
+.rank-row .name { font-weight: 600; }
+.rank-row .score { font-size: 18px; font-weight: 700; color: #60a5fa; }
+.empty { text-align: center; color: #64748b; padding: 40px 0; font-size: 14px; }
+.cand-card {
+  background: #0f172a; border-radius: 8px; padding: 14px; margin-bottom: 10px;
+  border: 1px solid #334155; cursor: pointer; transition: all 0.2s;
+}
+.cand-card:hover { border-color: #60a5fa; }
+.cand-card .head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.cand-card .name { font-weight: 600; font-size: 15px; }
+.cand-card .rec { font-size: 12px; padding: 3px 10px; border-radius: 12px; }
+.cand-card .rec.strong_recommend { background: #065f46; color: #6ee7b7; }
+.cand-card .rec.recommend { background: #1e3a8a; color: #93c5fd; }
+.cand-card .rec.neutral { background: #78350f; color: #fcd34d; }
+.cand-card .rec.not_recommend { background: #7f1d1d; color: #fca5a5; }
+.cand-card .reason { font-size: 13px; color: #94a3b8; line-height: 1.5; }
+.cand-card.hitl { border-color: #f59e0b; }
+.hitl-tag { display: inline-block; margin-left: 8px; padding: 1px 8px; background: #78350f; color: #fcd34d; border-radius: 10px; font-size: 10px; }
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+.stat { background: #0f172a; padding: 12px; border-radius: 6px; text-align: center; }
+.stat .num { font-size: 24px; font-weight: 700; color: #60a5fa; }
+.stat .lbl { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+details { margin-top: 8px; }
+summary { cursor: pointer; font-size: 13px; color: #94a3b8; }
+.tab-bar { display: flex; gap: 8px; margin-bottom: 16px; }
+.tab { padding: 8px 16px; background: #1e293b; border-radius: 6px; cursor: pointer; font-size: 13px; color: #94a3b8; border: 1px solid transparent; }
+.tab.active { background: #334155; color: #e2e8f0; border-color: #60a5fa; }
+.hint { font-size: 11px; color: #64748b; margin-top: 4px; line-height: 1.5; }
+
+/* 5 阶段进度条 */
+.stage-card { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 12px; padding: 20px; border: 1px solid #334155; margin-bottom: 16px; }
+.stage-bar { display: flex; align-items: flex-start; justify-content: space-between; position: relative; }
+.stage-bar::before { content: ''; position: absolute; top: 18px; left: 10%; right: 10%; height: 2px; background: #334155; z-index: 0; }
+.stage-bar .stage-fill { position: absolute; top: 18px; left: 10%; height: 2px; background: linear-gradient(90deg, #3b82f6, #8b5cf6); z-index: 1; transition: width 0.5s; }
+.stage-item { flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; z-index: 2; }
+.stage-dot { width: 36px; height: 36px; border-radius: 50%; background: #1e293b; border: 2px solid #334155; display: flex; align-items: center; justify-content: center; font-size: 18px; transition: all 0.3s; }
+.stage-dot.pending { color: #64748b; }
+.stage-dot.running { color: #fff; background: #1e3a8a; border-color: #60a5fa; box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.2); animation: pulse 1.5s ease-in-out infinite; }
+.stage-dot.success { color: #fff; background: #065f46; border-color: #10b981; }
+.stage-dot.failed { color: #fff; background: #7f1d1d; border-color: #ef4444; }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.2); } 50% { box-shadow: 0 0 0 12px rgba(59, 130, 246, 0.05); } }
+.stage-label { font-size: 12px; color: #cbd5e1; margin-top: 8px; text-align: center; }
+.stage-time { font-size: 10px; color: #64748b; margin-top: 2px; }
+.stage-current { background: rgba(96, 165, 250, 0.1); border: 1px solid #60a5fa; border-radius: 8px; padding: 8px 12px; margin-top: 14px; font-size: 13px; color: #e2e8f0; display: flex; align-items: center; gap: 8px; }
