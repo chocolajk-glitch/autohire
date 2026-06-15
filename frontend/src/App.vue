@@ -12,7 +12,14 @@ const selectedJD = ref('')
 const selectedResumes = ref([])
 const enableReflection = ref(false)
 const runQuestions = ref(false)
-const llmProvider = ref('deepseek')
+const llmProvider = ref('qwen')
+
+// 模型选项
+const LLM_OPTIONS = [
+  { value: 'qwen', label: '通义千问 Qwen', desc: '阿里云百炼 · 中文强 · 价格便宜 (推荐默认)' },
+  { value: 'deepseek', label: 'DeepSeek', desc: '深度求索 · 推理强 · 余额不足时会报 402' },
+  { value: 'minimax', label: '智谱 AI MiniMax', desc: '智谱 · 需在 .env 配置 MiniMax_API_KEY' },
+]
 
 const jobId = ref(null)
 const isRunning = ref(false)
@@ -267,9 +274,18 @@ onMounted(loadData)
               <div class="hint">开启后调用 CrewAI 三角色（研究员/出题人/审核员）出题，每份多花约 70 秒</div>
             </div>
           </label>
-          <div class="hint" style="margin-top: 10px;">
-            🤖 默认大模型: <strong style="color: #60a5fa;">{{ llmProvider }}</strong>
-            （可在 core/llm_factory.py 中切换为 Qwen/MiniMax/DeepSeek）
+          <div style="margin-top: 12px;">
+            <label style="font-size: 13px; color: #cbd5e1; display: block; margin-bottom: 6px;">
+              🤖 选择大模型
+            </label>
+            <select v-model="llmProvider">
+              <option v-for="opt in LLM_OPTIONS" :key="opt.value" :value="opt.value">
+                {{ opt.label }}
+              </option>
+            </select>
+            <div class="hint" style="margin-top: 4px;">
+              {{ (LLM_OPTIONS.find(o => o.value === llmProvider) || {}).desc }}
+            </div>
           </div>
         </div>
 
