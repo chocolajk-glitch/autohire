@@ -222,8 +222,14 @@ onMounted(loadData)
 <template>
   <div class="container">
     <header>
-      <h1>AutoHire · 多 Agent 智能招聘筛选系统</h1>
-      <div class="subtitle">由 AutoGen + CrewAI 驱动 · 支持通义千问 / 智谱 MiniMax / DeepSeek · 含规划调度 · 自我反思 · 人机协同</div>
+      <div class="header-row">
+        <div class="logo">
+          <span class="dot"></span>
+          <span>AutoHire</span>
+        </div>
+        <h1>多 Agent 智能招聘筛选系统</h1>
+      </div>
+      <div class="subtitle">由 AutoGen + CrewAI 驱动 · 支持通义千问 / MiniMax / DeepSeek · 含规划调度 · 自我反思 · 人机协同</div>
     </header>
 
     <div class="grid">
@@ -310,9 +316,9 @@ onMounted(loadData)
       <!-- 右侧: 实时日志 + 结果 -->
       <div>
         <div class="stage-card">
-          <h2 style="font-size: 16px; color: #cbd5e1; margin-bottom: 18px; display: flex; align-items: center; gap: 8px;">
-            📊 评估进度
-            <span v-if="isRunning" class="badge warn">运行中</span>
+          <h2>
+            评估进度
+            <span v-if="isRunning" class="badge running">运行中</span>
             <span v-else-if="result" class="badge ok">已完成</span>
             <span v-else class="badge info">待开始</span>
           </h2>
@@ -341,7 +347,7 @@ onMounted(loadData)
               <span class="ev"> [{{ l.event }}]</span>
               <span class="msg"> {{ formatLogMsg(l) }}</span>
             </div>
-            <div v-if="!logs.length && !isRunning" style="color: #64748b; text-align: center; padding: 20px 0;">
+            <div v-if="!logs.length && !isRunning" class="empty">
               还没有日志，点左侧"开始批量评估"即可看到 Agent 实时处理过程
             </div>
           </div>
@@ -375,16 +381,16 @@ onMounted(loadData)
 
           <div v-if="tab === 'ranking'" class="ranking">
             <div v-for="(name, i) in ranking" :key="name" class="rank-row" :class="getRankClass(i)">
-              <div class="pos" :class="{ top: i < 3 }">{{ i + 1 }}</div>
+              <div class="pos" :class="{ top: i === 0 }">{{ i + 1 }}</div>
               <div class="name">
                 {{ name }}
-                <span v-if="getCandidateByName(name)?.needs_human_review" class="hitl-tag">⚠️ 需人工复核</span>
+                <span v-if="getCandidateByName(name)?.needs_human_review" class="hitl-tag">需人工复核</span>
               </div>
-              <div class="score">{{ getCandidateByName(name)?.match.overall_score ?? '-' }} 分</div>
+              <div class="score">{{ getCandidateByName(name)?.match.overall_score ?? '-' }}</div>
               <div class="rec" :class="getCandidateByName(name)?.recommendation">
                 {{ recText(getCandidateByName(name)?.recommendation) }}
               </div>
-              <div style="font-size: 11px; color: #64748b; text-align: right;">
+              <div class="conf">
                 {{ recConf(getCandidateByName(name)?.match.confidence) }}
               </div>
             </div>
@@ -395,20 +401,20 @@ onMounted(loadData)
               <div class="head">
                 <div class="name">
                   {{ c.candidate_name }}
-                  <span v-if="c.needs_human_review" class="hitl-tag">⚠️ 需复核</span>
+                  <span v-if="c.needs_human_review" class="hitl-tag">需复核</span>
                 </div>
                 <div class="rec" :class="c.recommendation">{{ recText(c.recommendation) }}</div>
               </div>
               <div class="reason">
-                <strong style="color: #60a5fa;">综合分 {{ c.match.overall_score }}</strong>
+                <strong>综合分 {{ c.match.overall_score }}</strong>
                 · {{ c.recommendation_reason }}
               </div>
               <details>
                 <summary>查看优势 / 不足 / 反思</summary>
-                <div style="margin-top: 8px; font-size: 12px; color: #94a3b8;">
-                  <div><strong style="color: #6ee7b7;">✓ 优势:</strong> {{ (c.match.strengths || []).join('; ') }}</div>
-                  <div style="margin-top: 4px;"><strong style="color: #fca5a5;">✗ 不足:</strong> {{ (c.match.weaknesses || []).join('; ') }}</div>
-                  <div v-if="c.match.reflection_note" style="margin-top: 4px;"><strong style="color: #a78bfa;">⟳ 反思:</strong> {{ c.match.reflection_note }}</div>
+                <div style="margin-top: 10px; line-height: 1.7;">
+                  <div><span class="strengths">✓ 优势</span> {{ (c.match.strengths || []).join('; ') }}</div>
+                  <div style="margin-top: 4px;"><span class="weaknesses">✗ 不足</span> {{ (c.match.weaknesses || []).join('; ') }}</div>
+                  <div v-if="c.match.reflection_note" style="margin-top: 4px;"><span class="reflection">⟳ 反思</span> {{ c.match.reflection_note }}</div>
                 </div>
               </details>
             </div>
