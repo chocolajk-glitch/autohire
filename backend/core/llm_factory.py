@@ -99,6 +99,7 @@ def _MiniMax_config() -> LLMConfig:
         api_key=api_key,
         base_url=base_url,
         model="MiniMax-M2.7",
+        # reasoning_split=True 把思考链分到 reasoning_details 字段
         extra_body={"reasoning_split": True},
         temperature=0.3,
     )

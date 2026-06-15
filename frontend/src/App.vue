@@ -18,7 +18,7 @@ const llmProvider = ref('qwen')
 const LLM_OPTIONS = [
   { value: 'qwen', label: '通义千问 Qwen', desc: '阿里云百炼 · 中文强 · 价格便宜 (推荐默认)' },
   { value: 'deepseek', label: 'DeepSeek', desc: '深度求索 · 推理强 · 余额不足时会报 402' },
-  { value: 'minimax', label: '智谱 AI MiniMax', desc: '智谱 · 需在 .env 配置 MiniMax_API_KEY' },
+  { value: 'minimax', label: 'MiniMax M2.7', desc: 'minimaxi.com · OpenAI 兼容 · 已配置 API Key · 思考链可分离' },
 ]
 
 const jobId = ref(null)
