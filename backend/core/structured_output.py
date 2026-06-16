@@ -50,7 +50,7 @@ def structured_call(
     user: str,
     output_model: type[T],
     *,
-    max_retries: int = 2,
+    max_retries: int = 4,
 ) -> T:
     """让 LLM 输出 JSON, 解析+校验, 失败时最多重试 max_retries 次.
 
@@ -76,6 +76,8 @@ def structured_call(
         raw = client.chat(full_system, current_user)
         try:
             data = _extract_json(raw)
+            # 启发式修复: weight/int 字段常见错误 (LLM 给字符串/浮点)
+            data = _heuristic_fix(data, output_model)
             instance = output_model.model_validate(data)
             if attempt > 0:
                 logger.info("structured_call succeeded on retry %d", attempt)
@@ -83,14 +85,13 @@ def structured_call(
         except ValidationError as e:
             last_err = e
             logger.warning("attempt %d: schema validation failed: %s", attempt, _format_validation_error(e))
-            # 把错误信息 + raw 输出喂回去让 LLM 修正
+            # 把错误信息喂回去让 LLM 修正, 但只给前 3 个错误 (避免修一个坏一个)
             err_msg = _format_validation_error(e)
             current_user = (
                 user
-                + f"\n\nYour previous response failed schema validation.\n"
-                f"Validation errors:\n{err_msg}\n\n"
-                f"Required top-level fields: {list(output_model.model_fields.keys())}\n"
-                "Please output a corrected JSON object with ALL required top-level fields."
+                + f"\n\nPrevious output had validation errors:\n{err_msg}\n\n"
+                "Fix ONLY the listed errors and output the complete corrected JSON. "
+                "Keep all other fields EXACTLY as they were."
             )
         except (ValueError, json.JSONDecodeError) as e:
             last_err = e
@@ -104,3 +105,104 @@ def structured_call(
     raise RuntimeError(
         f"structured_call failed after {max_retries + 1} attempts. Last error: {last_err}"
     )
+
+
+def _heuristic_fix(data: dict, model: type[BaseModel]) -> dict:
+    """在 validate 前尝试修复 LLM 常见错误.
+
+    修复规则 (递归到嵌套模型):
+    - weight/int 字段: 字符串 '10' -> int 10; 'required'/'preferred' -> 10/5; 浮点 0-1 -> int(0-10)
+    - bool 字段: 'true'/'false' 字符串 -> bool; 1/0 -> bool
+    - Literal 字段 (category 等): 未知值映射到 'other'
+    """
+    if not isinstance(data, dict):
+        return data
+
+    def fix_one(val, field):
+        """修复单个字段值."""
+        if val is None:
+            return val
+        annotation = field.annotation
+        if annotation is None:
+            return val
+        ann_str = str(annotation)
+        outer_type = field.outer_type_ if hasattr(field, "outer_type_") else None
+
+        # bool 字段
+        if annotation is bool and not isinstance(val, bool):
+            if isinstance(val, str):
+                lv = val.strip().lower()
+                if lv in ("true", "yes", "1", "是"):
+                    return True
+                if lv in ("false", "no", "0", "否"):
+                    return False
+            if isinstance(val, (int, float)):
+                return bool(val)
+            return val
+
+        # int 字段
+        if annotation is int and not isinstance(val, bool):
+            if isinstance(val, str):
+                lv = val.strip().lower()
+                if lv in ("required", "必备", "必须", "critical"):
+                    return 10
+                if lv in ("preferred", "加分", "nice", "optional"):
+                    return 5
+                try:
+                    return int(float(val))
+                except (ValueError, TypeError):
+                    return 1
+            if isinstance(val, float):
+                # 浮点 (如 0.8) -> 推断为 0-10 缩放 (LLM 把 8/10 输出成 0.8)
+                if 0 < val <= 1:
+                    return max(1, min(10, round(val * 10)))
+                return int(val)
+            return val
+
+        # Literal 字段 - 不修复, 让 Pydantic validate 报错, LLM 重试时自己改
+        # (启发式映射容易误判, 比如 "experience" 不在白名单但其实该用 "experience")
+
+        # list[InnerModel]
+        if hasattr(annotation, "__args__"):
+            args = annotation.__args__
+            if len(args) == 1 and isinstance(val, list):
+                inner_type = args[0]
+                # InnerType 可能是模型 (有 model_fields) 或基本类型
+                if isinstance(inner_type, type) and issubclass(inner_type, BaseModel):
+                    fixed_list = []
+                    for item in val:
+                        if isinstance(item, dict):
+                            fixed_list.append(fix_one(item, type("F", (inner_type,), {})()))  # 用 type 模拟 FieldInfo
+                            # 实际更简单: 递归调 fix_data
+                            fixed_list[-1] = _heuristic_fix(item, inner_type)
+                        else:
+                            fixed_list.append(item)
+                    return fixed_list
+
+        return val
+
+    def fix_data(d, m):
+        """递归修复 dict 对应一个 model."""
+        if not isinstance(d, dict):
+            return d
+        result = {}
+        for name, field in m.model_fields.items():
+            if name not in d:
+                result[name] = d.get(name)
+                continue
+            val = d[name]
+            # 如果是嵌套 model 的字段, 递归
+            annotation = field.annotation
+            if hasattr(annotation, "model_fields"):  # 嵌套 BaseModel
+                result[name] = fix_data(val, annotation)
+            elif hasattr(annotation, "__args__") and len(annotation.__args__) == 1:
+                inner_type = annotation.__args__[0]
+                if isinstance(inner_type, type) and issubclass(inner_type, BaseModel) and isinstance(val, list):
+                    result[name] = [fix_data(item, inner_type) for item in val if isinstance(item, dict)]
+                else:
+                    result[name] = fix_one(val, field)
+            else:
+                result[name] = fix_one(val, field)
+        return result
+
+    return fix_data(data, model)
