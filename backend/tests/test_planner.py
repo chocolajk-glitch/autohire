@@ -43,7 +43,6 @@ class TestEndToEnd:
             jd_is_file=False,
             resume_is_file=False,
             run_interview_questions=True,
-            enable_reflection=True,
             llm_provider="deepseek",
         )
 
@@ -93,7 +92,6 @@ class TestEndToEnd:
             jd_is_file=False,
             resume_is_file=True,
             run_interview_questions=True,
-            enable_reflection=True,
             llm_provider="deepseek",
         )
         # 文件解析至少要成功

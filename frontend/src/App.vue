@@ -10,7 +10,6 @@ const jds = ref([])
 const resumes = ref([])
 const selectedJD = ref('')
 const selectedResumes = ref([])
-const enableReflection = ref(false)
 const runQuestions = ref(false)
 const useAutoGen = ref(false)
 const llmProvider = ref('minimax')
@@ -242,7 +241,6 @@ async function startBatch() {
     body: JSON.stringify({
       jd_filename: selectedJD.value,
       resume_filenames: selectedResumes.value,
-      enable_reflection: enableReflection.value,
       run_interview_questions: runQuestions.value,
       use_autogen: useAutoGen.value,
       llm_provider: llmProvider.value,
@@ -359,10 +357,10 @@ onMounted(loadData)
         <div class="card" style="margin-top: 16px;">
           <h2>③ 评估选项（高级）</h2>
           <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: #cbd5e1;">
-            <input type="checkbox" v-model="enableReflection" style="margin-top: 2px;" />
+            <input type="checkbox" v-model="useAutoGen" style="margin-top: 2px;" />
             <div>
-              <div>启用自我反思（让 LLM 自查漏判）</div>
-              <div class="hint">开启后匹配度更高，但每份简历多花约 30 秒</div>
+              <div>启用 AutoGen 反思机制 <span style="background: #7c3aed; color: #fff; padding: 1px 6px; border-radius: 3px; font-size: 11px; margin-left: 4px;">推荐</span></div>
+              <div class="hint">Matcher 用 AutoGen SelectorGroupChat：Assessor 初评 + Refiner 审查的双 Agent 协作反思，发现漏判/等价技能（如 Flask ≈ Web 框架）</div>
             </div>
           </label>
           <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: #cbd5e1; margin-top: 10px;">
@@ -370,13 +368,6 @@ onMounted(loadData)
             <div>
               <div>自动生成定制化面试题（CrewAI 协作）</div>
               <div class="hint">开启后调用 CrewAI 三角色（研究员/出题人/审核员）出题，每份多花约 70 秒</div>
-            </div>
-          </label>
-          <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: #cbd5e1; margin-top: 10px;">
-            <input type="checkbox" v-model="useAutoGen" style="margin-top: 2px;" />
-            <div>
-              <div>启用 AutoGen 主从多智能体架构 <span style="background: #7c3aed; color: #fff; padding: 1px 6px; border-radius: 3px; font-size: 11px; margin-left: 4px;">NEW</span></div>
-              <div class="hint">Matcher 用 AutoGen SelectorGroupChat（Assessor + Refiner 对话协作），慢但更准</div>
             </div>
           </label>
           <div style="margin-top: 12px;">

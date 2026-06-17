@@ -162,10 +162,9 @@ class BatchRequest(BaseModel):
     jd_filename: str | None = None       # 已有 JD 文件名 (在 JDS_DIR 里)
     jd_text: str | None = None           # 或直接传 JD 文本
     resume_filenames: list[str]          # 要评估的简历 (在 RESUMES_DIR 里)
-    enable_reflection: bool = False
     run_interview_questions: bool = False
     llm_provider: str = "deepseek"
-    use_autogen: bool = False            # True 则 Matcher 走 AutoGen SelectorGroupChat
+    use_autogen: bool = False            # True 则 Matcher 走 AutoGen SelectorGroupChat 双 Agent 协作反思
     auto_submit_hitl: bool = True        # 跑完自动把 needs_human_review 的提交到队列
 
 
@@ -272,7 +271,6 @@ async def _run_batch_job(job_id: str, req: BatchRequest) -> None:
                 jd_path=jd_path,
                 resume_paths=resume_paths,
                 jd_text=req.jd_text,
-                enable_reflection=req.enable_reflection,
                 run_interview_questions=req.run_interview_questions,
                 llm_provider=req.llm_provider,
                 use_autogen=req.use_autogen,

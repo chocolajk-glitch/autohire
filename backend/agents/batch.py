@@ -76,7 +76,6 @@ def run_batch(
     resume_paths: list[str | Path],
     *,
     jd_text: str | None = None,
-    enable_reflection: bool = False,
     run_interview_questions: bool = False,
     llm_provider: str = "deepseek",
     use_autogen: bool = False,
@@ -88,10 +87,9 @@ def run_batch(
         jd_path: JD 文件路径 (txt/pdf/docx)
         resume_paths: 简历文件路径列表
         jd_text: 如果不想传文件, 可以直接传 JD 文本 (与 jd_path 二选一)
-        enable_reflection: 是否跑匹配度反思
         run_interview_questions: 是否跑面试出题
         llm_provider: LLM provider
-        use_autogen: 是否走 AutoGen 主从多智能体 pipeline
+        use_autogen: 是否走 AutoGen Matcher (SelectorGroupChat 双 Agent 协作 = 反思)
         step_callback: 可选, fn(step_name, status, **extra), 每步状态变化时调用
 
     Returns:
@@ -135,7 +133,6 @@ def run_batch(
             jd_is_file=(jd_text is None),
             resume_is_file=True,
             run_interview_questions=run_interview_questions,
-            enable_reflection=enable_reflection,
             llm_provider=llm_provider,
             use_autogen=use_autogen,
             step_callback=_cb,

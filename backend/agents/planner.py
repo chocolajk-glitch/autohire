@@ -1,8 +1,8 @@
 """Planner - 端到端 Pipeline 协调器.
 
 两种模式:
-1. 默认模式: 确定性线性调度 (按步骤顺序跑各个 Agent)
-2. AutoGen 模式 (use_autogen=True): Matcher 环节用 SelectorGroupChat (Agent 协作)
+1. 默认模式 (use_autogen=False): Matcher 用 LLM 单评, 无反思
+2. AutoGen 模式 (use_autogen=True): Matcher 用 SelectorGroupChat (Assessor + Refiner 双 Agent 协作 = 反思)
 
 职责:
 1. 进度追踪
@@ -78,7 +78,6 @@ def run_pipeline(
     jd_is_file: bool = False,
     resume_is_file: bool = False,
     run_interview_questions: bool = True,
-    enable_reflection: bool = True,
     llm_provider: str = "deepseek",
     step_callback=None,
     use_autogen: bool = False,
@@ -91,19 +90,17 @@ def run_pipeline(
         jd_is_file: True 表示 jd_text_or_path 是文件路径
         resume_is_file: True 表示 resume_text_or_path 是文件路径
         run_interview_questions: 是否跑 CrewAI 出面试题 (默认 True)
-        enable_reflection: 匹配度是否跑反思 (默认 True)
         llm_provider: 默认 LLM provider
         step_callback: 可选 fn(step_name, status, duration_ms, error), 每步开始/完成时调用
-        use_autogen: True 则走 AutoGen 主从多智能体 pipeline (Matcher 用 SelectorGroupChat)
+        use_autogen: True 则 Matcher 走 AutoGen SelectorGroupChat (Assessor + Refiner 协作反思)
     """
-    # AutoGen pipeline: Matcher 环节用 SelectorGroupChat (Agent 协作)
+    # AutoGen pipeline: Matcher 环节用 SelectorGroupChat 双 Agent 协作
     # 其他环节 (JD/Resume 解析 + 出题 + 报告) 仍用现有逻辑
     if use_autogen:
         return _run_pipeline_with_autogen_matcher(
             jd_text_or_path, resume_text_or_path,
             jd_is_file=jd_is_file, resume_is_file=resume_is_file,
             run_interview_questions=run_interview_questions,
-            enable_reflection=enable_reflection,
             llm_provider=llm_provider,
             step_callback=step_callback,
         )
@@ -190,16 +187,16 @@ def run_pipeline(
     s.duration_ms = int((time.time() - t1) * 1000)
     _cb(s.name, "success", duration_ms=s.duration_ms)
 
-    # Step 3: 匹配 + 反思
+    # Step 3: 匹配 (LLM 单评; 反思要 use_autogen=True)
     t2 = time.time()
-    s = ctx.add_step("match_with_reflection" if enable_reflection else "match")
+    s = ctx.add_step("match")
     s.status = "running"
     _cb(s.name, "running")
     try:
         ctx.match = match_resume_to_jd(
             ctx.jd,
             ctx.resume,
-            config=MatcherConfig(enable_reflection=enable_reflection, initial_provider=llm_provider),
+            config=MatcherConfig(provider=llm_provider),
         )
         s.status = "success"
     except Exception as e:
@@ -277,14 +274,13 @@ def _run_pipeline_with_autogen_matcher(
     jd_is_file: bool = False,
     resume_is_file: bool = False,
     run_interview_questions: bool = True,
-    enable_reflection: bool = True,
     llm_provider: str = "minimax",
     step_callback=None,
 ) -> PipelineContext:
     """AutoGen 版 Pipeline: Matcher 环节用 SelectorGroupChat (Agent 协作).
 
     其他环节 (JD/Resume 解析 + 出题 + 报告) 仍用现有函数.
-    只有 Matcher 的 Assessor + Refiner 走 AutoGen SelectorGroupChat.
+    Matcher 的 Assessor + Refiner 走 AutoGen SelectorGroupChat 双 Agent 协作 = 反思.
     """
     from agents.auto_gen_orchestrator import _run_matcher_team
     from agents.jd_parser import parse_jd_file, parse_jd_text
@@ -380,12 +376,12 @@ def _run_pipeline_with_autogen_matcher(
         s.duration_ms = int((time.time() - t2) * 1000)
         _cb(s.name, "failed", duration_ms=s.duration_ms, error=s.error)
         logger.exception("autogen matcher team failed, falling back to direct call")
-        # 兜底: 降级到直接调用
+        # 兜底: 降级到直接 LLM 单评
         try:
             from agents.matcher import MatcherConfig, match_resume_to_jd
             ctx.match = match_resume_to_jd(
                 ctx.jd, ctx.resume,
-                config=MatcherConfig(enable_reflection=enable_reflection, initial_provider=llm_provider),
+                config=MatcherConfig(provider=llm_provider),
             )
             s.status = "success"
             s.error = f"fallback to direct call: {str(e)[:100]}"

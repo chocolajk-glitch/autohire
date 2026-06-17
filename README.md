@@ -153,32 +153,35 @@ graph TB
     style Tavily fill:#fff3e0
 ```
 
-## 🆕 AutoGen 主从多智能体架构（可选）
+## 🆕 AutoGen 反思机制
 
-默认 pipeline 是 Python 函数顺序调度。开启 `use_autogen=True` 后，**Matcher 环节升级为真正的 Agent 协作**（其他环节保持不变）。
+匹配度评估环节默认用 LLM 单评（无反思）。开启 `use_autogen=True` 后升级为 **AutoGen SelectorGroupChat**，让 **Assessor + Refiner 双 Agent 协作**完成反思。
 
 ```mermaid
 graph LR
-    JD[JD + 简历] --> Parser[解析<br/>本地 LLM]
-    Parser --> Supervisor[Supervisor<br/>AutoGen AssistantAgent]
-    Supervisor -->|tool call| Assessor[Assessor Agent<br/>初评]
-    Assessor -->|JSON| Refiner[Refiner Agent<br/>审查修正]
-    Refiner -->|JSON| Supervisor
-    Supervisor --> Report[报告生成]
+    JD[JD + 简历] --> Assessor[Assessor Agent<br/>初评]
+    Assessor -->|JSON 输出| Refiner[Refiner Agent<br/>审查修正]
+    Refiner -->|JSON 修正| Report[匹配结果]
+    Report -.需要时.-> Assessor
 
-    style Supervisor fill:#7c3aed,color:#fff
     style Assessor fill:#ec4899,color:#fff
     style Refiner fill:#f59e0b,color:#fff
 ```
 
-**核心机制**: Matcher 用 `autogen-agentchat` 的 `SelectorGroupChat`，让 Assessor + Refiner 两个 Agent 在对话中互相质疑、修正评分（不是单次 LLM 调用，而是真正的多轮协作）。
+**核心机制**（取代了旧的"自我反思"选项）：
+- **Assessor**: 评估专家，system prompt 专门做评分
+- **Refiner**: 审查专家，system prompt 专门挑刺
+- 两者在 SelectorGroupChat 中对话，Refiner 能发现"Flask ≈ Web 框架"这种等价技能
+- 跟旧"自我反思"（同一 LLM 看自己输出）相比，反思质量更高
 
 **触发方式**:
 - API: `POST /api/batch/run` body 加 `"use_autogen": true`
 - 代码: `run_pipeline(..., use_autogen=True)`
-- 前端: 勾选 "启用 AutoGen 主从多智能体架构" 复选框
+- 前端: 勾选 "启用 AutoGen 反思机制" 复选框
 
-**耗时**: ~80 秒/份（比默认 ~30 秒慢，因为多轮对话）
+**耗时**: ~300 秒/份（比默认 ~210 秒慢 100 秒，因为多轮对话）
+
+
 
 
 
@@ -296,10 +299,10 @@ python -m eval.run_eval
 > 基于 AutoGen + CrewAI + MCP 的多 Agent 协同招聘筛选系统，通过动态路由、联网搜索和 MCP 独立服务，实现 JD 解析、简历解析、匹配度评估（含 Self-Reflection）、面试题生成、报告生成和 HR 人工协同的端到端工作流。
 
 **项目亮点（7 条）**：
-1. 设计 Planner + 5 AutoGen Agent + 1 CrewAI 3 角色子系统的多 Agent 协作架构；Matcher 环节用 AutoGen 的 SelectorGroupChat 实现 Assessor + Refiner 双 Agent 互相质疑、修正评分的多轮对话
+1. 设计 Planner + AutoGen SelectorGroupChat (Assessor + Refiner 双 Agent 协作反思) + CrewAI 3 角色子系统的多 Agent 协作架构；Matcher 环节用 AutoGen SelectorGroupChat 让 Assessor 和 Refiner 两个 Agent 在对话中互相质疑、修正评分
 2. 实现 MCP 独立服务（FastMCP + stdio）隔离简历/JD 解析，支持 graceful fallback
 3. 动态路由（算法/前端/OCR/标准）根据简历关键词自动识别方向，注入岗位上下文提升匹配精度
-4. Self-Reflection 反思重判机制 + Tavily 联网查询公司背景，增强匹配上下文
+4. AutoGen 反思机制（Assessor + Refiner 双 Agent SelectorGroupChat）+ Tavily 联网查询公司背景，增强匹配上下文
 5. CrewAI 多角色协作面试出题（Researcher/Designer/Reviewer），输出结构化题库
 6. 工厂模式统一封装 Qwen/MiniMax/DeepSeek 三家 LLM，支持运行时切换
 7. 端到端异步 pipeline + SSE 流式进度推送 + HR 人工协同（HITL），从上传到报告全自动化
