@@ -153,7 +153,34 @@ graph TB
     style Tavily fill:#fff3e0
 ```
 
-## 快速开始
+## 🆕 AutoGen 主从多智能体架构（可选）
+
+默认 pipeline 是 Python 函数顺序调度。开启 `use_autogen=True` 后，**Matcher 环节升级为真正的 Agent 协作**（其他环节保持不变）。
+
+```mermaid
+graph LR
+    JD[JD + 简历] --> Parser[解析<br/>本地 LLM]
+    Parser --> Supervisor[Supervisor<br/>AutoGen AssistantAgent]
+    Supervisor -->|tool call| Assessor[Assessor Agent<br/>初评]
+    Assessor -->|JSON| Refiner[Refiner Agent<br/>审查修正]
+    Refiner -->|JSON| Supervisor
+    Supervisor --> Report[报告生成]
+
+    style Supervisor fill:#7c3aed,color:#fff
+    style Assessor fill:#ec4899,color:#fff
+    style Refiner fill:#f59e0b,color:#fff
+```
+
+**核心机制**: Matcher 用 `autogen-agentchat` 的 `SelectorGroupChat`，让 Assessor + Refiner 两个 Agent 在对话中互相质疑、修正评分（不是单次 LLM 调用，而是真正的多轮协作）。
+
+**触发方式**:
+- API: `POST /api/batch/run` body 加 `"use_autogen": true`
+- 代码: `run_pipeline(..., use_autogen=True)`
+- 前端: 勾选 "启用 AutoGen 主从多智能体架构" 复选框
+
+**耗时**: ~80 秒/份（比默认 ~30 秒慢，因为多轮对话）
+
+
 
 ### 1. 准备环境
 
@@ -268,13 +295,14 @@ python -m eval.run_eval
 **项目简介（一句话）**：
 > 基于 AutoGen + CrewAI + MCP 的多 Agent 协同招聘筛选系统，通过动态路由、联网搜索和 MCP 独立服务，实现 JD 解析、简历解析、匹配度评估（含 Self-Reflection）、面试题生成、报告生成和 HR 人工协同的端到端工作流。
 
-**项目亮点（6 条）**：
-1. 设计 Planner + 6 AutoGen Agent + 1 CrewAI 3 角色子系统的多 Agent 协作架构
+**项目亮点（7 条）**：
+1. 设计 Planner + 5 AutoGen Agent + 1 CrewAI 3 角色子系统的多 Agent 协作架构；Matcher 环节用 AutoGen 的 SelectorGroupChat 实现 Assessor + Refiner 双 Agent 互相质疑、修正评分的多轮对话
 2. 实现 MCP 独立服务（FastMCP + stdio）隔离简历/JD 解析，支持 graceful fallback
 3. 动态路由（算法/前端/OCR/标准）根据简历关键词自动识别方向，注入岗位上下文提升匹配精度
 4. Self-Reflection 反思重判机制 + Tavily 联网查询公司背景，增强匹配上下文
 5. CrewAI 多角色协作面试出题（Researcher/Designer/Reviewer），输出结构化题库
 6. 工厂模式统一封装 Qwen/MiniMax/DeepSeek 三家 LLM，支持运行时切换
+7. 端到端异步 pipeline + SSE 流式进度推送 + HR 人工协同（HITL），从上传到报告全自动化
 
 **补充数据（被追问时用）**：
 - 11 份简历 × 3 JD = 33 次 ground truth 评测，皮尔逊相关性 0.815，Top-3 命中率 67%

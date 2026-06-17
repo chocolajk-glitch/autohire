@@ -165,6 +165,7 @@ class BatchRequest(BaseModel):
     enable_reflection: bool = False
     run_interview_questions: bool = False
     llm_provider: str = "deepseek"
+    use_autogen: bool = False            # True 则 Matcher 走 AutoGen SelectorGroupChat
     auto_submit_hitl: bool = True        # 跑完自动把 needs_human_review 的提交到队列
 
 
@@ -212,7 +213,11 @@ async def _run_batch_job(job_id: str, req: BatchRequest) -> None:
             await asyncio.sleep(0.05)
 
         # 真正的批量 (同步, 阻塞 1-5 分钟)
-        jd_path = JDS_DIR / f"{req.jd_filename}.txt" if req.jd_filename else None
+        # 容错: 如果用户传的 filename 已带 .txt 后缀, 不要重复加
+        jd_name = req.jd_filename
+        if jd_name and not jd_name.endswith(".txt"):
+            jd_name = f"{jd_name}.txt"
+        jd_path = JDS_DIR / jd_name if jd_name else None
         loop = asyncio.get_running_loop()
 
         # 包装 run_batch, 让它在每个 step 开始/完成时通过 callback 推 stage
@@ -270,6 +275,7 @@ async def _run_batch_job(job_id: str, req: BatchRequest) -> None:
                 enable_reflection=req.enable_reflection,
                 run_interview_questions=req.run_interview_questions,
                 llm_provider=req.llm_provider,
+                use_autogen=req.use_autogen,
                 step_callback=step_callback,
             ),
         )

@@ -24,12 +24,35 @@ logger = logging.getLogger(__name__)
 
 
 def _build_llm(provider: str = "deepseek") -> LLM:
-    api_key = os.getenv("DEEPSEEK_API_KEY")
+    """根据 provider 构建 CrewAI 的 LLM (走 litellm 直连)."""
+    if provider == "minimax":
+        api_key = os.getenv("MiniMax_API_KEY")
+        if not api_key:
+            raise RuntimeError("MiniMax_API_KEY not set")
+        base_url = os.getenv("MiniMax_BASE_URL", "https://api.minimaxi.com/v1")
+        return LLM(
+            model="MiniMax-M2.7",
+            base_url=base_url,
+            api_key=api_key,
+            temperature=0.4,
+        )
+    if provider == "deepseek":
+        api_key = os.getenv("DEEPSEEK_API_KEY")
+        if not api_key:
+            raise RuntimeError("DEEPSEEK_API_KEY not set")
+        return LLM(
+            model="deepseek-chat",
+            base_url="https://api.deepseek.com",
+            api_key=api_key,
+            temperature=0.4,
+        )
+    # qwen
+    api_key = os.getenv("DASHSCOPE_API_KEY")
     if not api_key:
-        raise RuntimeError("DEEPSEEK_API_KEY not set")
+        raise RuntimeError("DASHSCOPE_API_KEY not set")
     return LLM(
-        model="openai/deepseek-v4-pro",
-        base_url="https://api.deepseek.com",
+        model="qwen-plus",
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
         api_key=api_key,
         temperature=0.4,
     )

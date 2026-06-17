@@ -79,6 +79,7 @@ def run_batch(
     enable_reflection: bool = False,
     run_interview_questions: bool = False,
     llm_provider: str = "deepseek",
+    use_autogen: bool = False,
     step_callback=None,
 ) -> tuple[BatchReport, BatchSummary]:
     """跑批量评估.
@@ -90,6 +91,7 @@ def run_batch(
         enable_reflection: 是否跑匹配度反思
         run_interview_questions: 是否跑面试出题
         llm_provider: LLM provider
+        use_autogen: 是否走 AutoGen 主从多智能体 pipeline
         step_callback: 可选, fn(step_name, status, **extra), 每步状态变化时调用
 
     Returns:
@@ -135,6 +137,7 @@ def run_batch(
             run_interview_questions=run_interview_questions,
             enable_reflection=enable_reflection,
             llm_provider=llm_provider,
+            use_autogen=use_autogen,
             step_callback=_cb,
         )
 

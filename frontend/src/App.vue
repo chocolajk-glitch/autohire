@@ -12,14 +12,15 @@ const selectedJD = ref('')
 const selectedResumes = ref([])
 const enableReflection = ref(false)
 const runQuestions = ref(false)
+const useAutoGen = ref(false)
 const llmProvider = ref('minimax')
 
 // 模型选项
 const LLM_OPTIONS = [
   { value: 'minimax', label: 'MiniMax M2.7', desc: 'minimaxi.com · OpenAI 兼容 · 速度最快 · 已配置 API Key' },
-  { value: 'qwen', label: '通义千问 Qwen', desc: '阿里云百炼 · 中文强 · 余额已欠费 (暂时不可用)' },
-  { value: 'deepseek', label: 'DeepSeek', desc: '深度求索 · 推理强 · 余额已欠费 (暂时不可用)' },
-]
+  { value: 'qwen', label: '通义千问 Qwen', desc: '阿里云百炼 · 中文强' },
+  { value: 'deepseek', label: 'DeepSeek', desc: '深度求索 · 推理强' },
+]                   
 
 const jobId = ref(null)
 const isRunning = ref(false)
@@ -142,7 +143,7 @@ function resetStages() {
 }
 function _applyStageEvent(stepName, status, durationMs = 0) {
   let key = stepName
-  if (key === 'match_with_reflection' || key === 'match') key = 'match'
+  if (key === 'match_with_reflection' || key === 'match' || key === 'autogen_matcher_team') key = 'match'
   const idx = stages.value.findIndex(s => s.key === key)
   if (idx < 0) return
   const cur = stages.value[idx]
@@ -243,6 +244,7 @@ async function startBatch() {
       resume_filenames: selectedResumes.value,
       enable_reflection: enableReflection.value,
       run_interview_questions: runQuestions.value,
+      use_autogen: useAutoGen.value,
       llm_provider: llmProvider.value,
       auto_submit_hitl: true,
     }),
@@ -368,6 +370,13 @@ onMounted(loadData)
             <div>
               <div>自动生成定制化面试题（CrewAI 协作）</div>
               <div class="hint">开启后调用 CrewAI 三角色（研究员/出题人/审核员）出题，每份多花约 70 秒</div>
+            </div>
+          </label>
+          <label style="display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: #cbd5e1; margin-top: 10px;">
+            <input type="checkbox" v-model="useAutoGen" style="margin-top: 2px;" />
+            <div>
+              <div>启用 AutoGen 主从多智能体架构 <span style="background: #7c3aed; color: #fff; padding: 1px 6px; border-radius: 3px; font-size: 11px; margin-left: 4px;">NEW</span></div>
+              <div class="hint">Matcher 用 AutoGen SelectorGroupChat（Assessor + Refiner 对话协作），慢但更准</div>
             </div>
           </label>
           <div style="margin-top: 12px;">
