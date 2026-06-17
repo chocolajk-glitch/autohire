@@ -68,13 +68,19 @@ SYSTEM_PROMPT_REFLECT = """你是一个严格的质量审查员, 负责检查刚
 """
 
 
-def _build_initial_user_prompt(jd: ParsedJD, resume: ParsedResume) -> str:
+def _build_initial_user_prompt(
+    jd: ParsedJD,
+    resume: ParsedResume,
+    web_context: str = "",
+) -> str:
     jd_dict = jd.model_dump(exclude_none=True)
     resume_dict = resume.model_dump(exclude_none=True)
+    web_section = f"\n\n【联网搜索补充信息】\n{web_context}" if web_context else ""
     return (
         "请评估以下候选人 vs 职位的匹配度.\n\n"
         f"【JD】\n{json.dumps(jd_dict, ensure_ascii=False, indent=2)}\n\n"
         f"【简历】\n{json.dumps(resume_dict, ensure_ascii=False, indent=2)}"
+        f"{web_section}"
     )
 
 
@@ -133,6 +139,7 @@ class MatcherConfig:
     initial_provider: str = "deepseek"
     reflect_provider: str = "qwen"
     enable_reflection: bool = True
+    enable_web_search: bool = True  # 联网搜索增强
 
 
 def match_resume_to_jd(
@@ -143,16 +150,25 @@ def match_resume_to_jd(
     """评估一份简历对一份 JD 的匹配度.
 
     流程:
-    1. 初评 (initial_provider)
-    2. 反思 (reflect_provider) - 可关闭
-    3. 合并输出
+    1. (可选) 联网搜索补充公司+岗位信息
+    2. 初评 (initial_provider)
+    3. 反思 (reflect_provider) - 可关闭
+    4. 合并输出
     """
+    from agents.web_searcher import search_company_info
+
     cfg = config or MatcherConfig()
+    web_context = ""
+    if cfg.enable_web_search:
+        web_context = search_company_info(jd.company, jd.job_title)
+        if web_context:
+            logger.info("web search context added (%d chars)", len(web_context))
+
     initial_client = get_llm(cfg.initial_provider)
     initial = structured_call(
         initial_client,
         system=SYSTEM_PROMPT_INITIAL,
-        user=_build_initial_user_prompt(jd, resume),
+        user=_build_initial_user_prompt(jd, resume, web_context=web_context),
         output_model=MatchResult,
     )
     logger.info(
