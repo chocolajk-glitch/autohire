@@ -161,7 +161,63 @@ async function loadData() {
   ])
   jds.value = jdsR.map(k => ({ key: k, label: JD_LABELS[k] || k }))
   resumes.value = resumesR
-  if (jds.value.length > 0) selectedJD.value = jds.value[0].key
+  if (jds.value.length > 0 && !selectedJD.value) selectedJD.value = jds.value[0].key
+}
+
+// 上传相关
+const uploading = ref(false)
+const uploadMsg = ref('')
+const jdFileInput = ref(null)
+const resumeFileInput = ref(null)
+
+async function uploadJD(e) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  uploading.value = true
+  uploadMsg.value = `正在上传 ${file.name}...`
+  try {
+    const form = new FormData()
+    form.append('file', file)
+    const resp = await fetch(`${API}/api/jd/upload`, { method: 'POST', body: form })
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }))
+      throw new Error(err.detail || '上传失败')
+    }
+    const data = await resp.json()
+    uploadMsg.value = `✓ 已上传: ${data.filename}（${data.job_title || '解析完成'}）`
+    // 刷新 JD 列表并选中新上传的
+    await loadData()
+    const newKey = file.name.replace(/\.[^.]+$/, '')
+    selectedJD.value = newKey
+  } catch (err) {
+    uploadMsg.value = `✗ 上传失败: ${err.message}`
+  } finally {
+    uploading.value = false
+    if (jdFileInput.value) jdFileInput.value.value = ''
+  }
+}
+
+async function uploadResume(e) {
+  const files = e.target.files
+  if (!files?.length) return
+  uploading.value = true
+  uploadMsg.value = `正在上传 ${files.length} 份简历...`
+  let ok = 0, fail = 0
+  for (const file of files) {
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const resp = await fetch(`${API}/api/resume/upload`, { method: 'POST', body: form })
+      if (!resp.ok) fail++
+      else ok++
+    } catch {
+      fail++
+    }
+  }
+  uploadMsg.value = `✓ 上传完成: 成功 ${ok} 份` + (fail > 0 ? `, 失败 ${fail} 份` : '')
+  await loadData()
+  uploading.value = false
+  if (resumeFileInput.value) resumeFileInput.value.value = ''
 }
 
 async function startBatch() {
@@ -264,6 +320,11 @@ onMounted(loadData)
             <span style="color:#94a3b8;">文件: data/jds/{{ selectedJD }}.txt</span>
           </div>
           <div class="hint" v-else>岗位文件存放在 data/jds/ 目录，可在下方操作面板中查看内容</div>
+          <div class="upload-zone" @click="jdFileInput?.click()" :class="{ disabled: uploading }">
+            <input ref="jdFileInput" type="file" accept=".txt,.pdf,.docx,.md" hidden @change="uploadJD" />
+            <span class="upload-icon">📤</span>
+            <span>点击上传 JD 文件（TXT / PDF / DOCX）</span>
+          </div>
         </div>
 
         <div class="card" style="margin-top: 16px;">
@@ -278,6 +339,11 @@ onMounted(loadData)
             <button style="width: auto; padding: 6px 12px; font-size: 12px; background: #334155;" @click="selectAll">全选</button>
             <button style="width: auto; padding: 6px 12px; font-size: 12px; background: #334155;" @click="selectNone">清空</button>
             <button style="width: auto; padding: 6px 12px; font-size: 12px; background: #334155;" @click="selectSmart" title="自动选 1 份强匹配 + 1 份中等 + 1 份弱匹配用于演示">快速演示 (3 份)</button>
+          </div>
+          <div class="upload-zone" @click="resumeFileInput?.click()" :class="{ disabled: uploading }">
+            <input ref="resumeFileInput" type="file" accept=".pdf,.docx,.txt,.md" multiple hidden @change="uploadResume" />
+            <span class="upload-icon">📤</span>
+            <span>点击上传简历（支持多选，PDF / DOCX / TXT）</span>
           </div>
           <div class="hint">📁 简历来源: data/resumes/ 目录，共 {{ resumes.length }} 份</div>
         </div>
@@ -317,6 +383,9 @@ onMounted(loadData)
           <button :disabled="!canStart" @click="startBatch">
             {{ isRunning ? '⏳ 正在评估中...' : '🚀 开始批量评估' }}
           </button>
+          <div v-if="uploadMsg" class="upload-status" :class="{ error: uploadMsg.startsWith('✗') }">
+            {{ uploadMsg }}
+          </div>
           <div v-if="jobId" class="progress-wrap">
             <div class="progress-bar">
               <div class="progress-fill" :style="{ width: (progress * 100) + '%' }"></div>

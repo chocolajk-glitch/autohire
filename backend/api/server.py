@@ -95,7 +95,10 @@ def list_jds() -> list[str]:
 def list_resumes() -> list[str]:
     if not RESUMES_DIR.exists():
         return []
-    return sorted([p.name for p in RESUMES_DIR.glob("*.pdf")])
+    files = []
+    for ext in ("*.pdf", "*.docx", "*.txt"):
+        files.extend(p.name for p in RESUMES_DIR.glob(ext))
+    return sorted(files)
 
 
 # ============================================================
@@ -109,19 +112,31 @@ class JDUploadResponse(BaseModel):
 
 @app.post("/api/jd/upload", response_model=JDUploadResponse)
 async def upload_jd(file: UploadFile = File(...)) -> JDUploadResponse:
-    """上传 JD 文件 (txt / pdf / docx). 解析后返回结构化文本."""
+    """上传 JD 文件 (txt / pdf / docx). 保存到 JDS_DIR 并返回解析文本."""
     from core.tools.document_parser import parse_any
 
     suffix = Path(file.filename or "").suffix.lower()
     if suffix not in {".txt", ".md", ".pdf", ".docx"}:
         raise HTTPException(400, f"unsupported file type: {suffix}")
-    save_path = UPLOADS_DIR / f"{uuid.uuid4().hex[:8]}_{file.filename}"
-    save_path.write_bytes(await file.read())
+    # 保存到 jds/ 目录, 用原始文件名 (去后缀存为 .txt)
+    stem = Path(file.filename).stem
+    save_path = JDS_DIR / f"{stem}.txt"
+    if suffix == ".txt":
+        save_path.write_bytes(await file.read())
+    else:
+        # pdf/docx: 先存临时文件解析, 再把纯文本存为 .txt
+        tmp_path = UPLOADS_DIR / f"{uuid.uuid4().hex[:8]}_{file.filename}"
+        tmp_path.write_bytes(await file.read())
+        try:
+            text = parse_any(tmp_path)
+        except Exception as e:
+            raise HTTPException(400, f"failed to parse: {e}")
+        save_path.write_text(text, encoding="utf-8")
+    # 解析并返回
     try:
         text = parse_any(save_path)
     except Exception as e:
         raise HTTPException(400, f"failed to parse: {e}")
-    # 粗略提取 job_title (第一行非空)
     first_line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
     return JDUploadResponse(filename=file.filename, jd_text=text, job_title=first_line[:100])
 

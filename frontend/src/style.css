@@ -220,6 +220,48 @@ button.secondary:hover:not(:disabled) {
   line-height: 1.5;
 }
 
+/* ========== 上传区域 ========== */
+.upload-zone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 14px 16px;
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  background: var(--surface-soft);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.upload-zone:hover {
+  border-color: var(--brand);
+  background: rgba(31, 41, 55, 0.03);
+  color: var(--brand);
+}
+.upload-zone.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.upload-icon {
+  font-size: 18px;
+}
+.upload-status {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12.5px;
+  background: #DCFCE7;
+  color: #15803D;
+}
+.upload-status.error {
+  background: #FEE2E2;
+  color: #B91C1C;
+}
+
 /* ========== 5 阶段进度条 ========== */
 .stage-card {
   background: var(--surface);
@@ -232,6 +274,7 @@ button.secondary:hover:not(:disabled) {
 .stage-bar {
   display: flex; align-items: flex-start; justify-content: space-between;
   position: relative; margin-top: 4px;
+  overflow: hidden;
 }
 .stage-bar::before {
   content: '';
