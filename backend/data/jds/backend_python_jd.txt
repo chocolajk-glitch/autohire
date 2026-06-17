@@ -1,23 +1,23 @@
-Senior Python Backend Engineer - Shanghai
+高级 Python 后端工程师 - 上海
 
-We are looking for a senior Python backend engineer to join our platform team.
+我们正在寻找一位资深 Python 后端工程师加入平台团队。
 
-Requirements:
-- 3+ years of Python development experience
-- Strong knowledge of FastAPI or Django
-- Experience with PostgreSQL and Redis
-- Familiar with Docker and Kubernetes
-- Experience with LangGraph or AutoGen is a strong plus
-- Bachelor's degree in Computer Science or related field
+岗位要求:
+- 3 年以上 Python 开发经验
+- 精通 FastAPI 或 Django 框架
+- 熟悉 PostgreSQL 和 Redis
+- 熟悉 Docker 和 Kubernetes
+- 有 LangGraph 或 AutoGen 经验者优先
+- 计算机科学或相关专业本科及以上学历
 
-Nice to have:
-- Open source contributions
-- Experience with multi-agent systems
-- Experience leading a small team
+加分项:
+- 有开源项目贡献经验
+- 有 Multi-Agent 系统开发经验
+- 有小团队管理经验
 
-Responsibilities:
-- Design and implement RESTful APIs
-- Mentor junior engineers
-- Participate in architecture decisions
+岗位职责:
+- 设计和实现 RESTful API 服务
+- 指导初级工程师
+- 参与架构设计决策
 
-Salary: 30K-50K RMB/month
+薪资: 30K-50K/月

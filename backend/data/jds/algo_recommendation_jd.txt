@@ -1,24 +1,24 @@
-Senior Recommendation Algorithm Engineer - Beijing
+高级推荐算法工程师 - 北京
 
-We are looking for a senior recommendation algorithm engineer to join our content team.
+我们正在寻找一位资深推荐算法工程师加入内容团队。
 
-Requirements:
-- 3+ years of experience in recommendation systems or search ranking
-- Strong knowledge of DNN, multi-task learning, and embedding models
-- Experience with PyTorch or TensorFlow
-- Familiar with A/B testing and offline metrics (AUC, NDCG, CTR)
-- Master's degree or above in CS, Math, or related field
-- Publications at RecSys / SIGIR / KDD is a strong plus
+岗位要求:
+- 3 年以上推荐系统或搜索排序经验
+- 精通深度学习（DNN、多任务学习、Embedding 模型）
+- 熟悉 PyTorch 或 TensorFlow
+- 熟悉 A/B 测试和离线评估指标（AUC、NDCG、CTR）
+- 计算机、数学或相关专业硕士及以上学历
+- 在 RecSys / SIGIR / KDD 等顶会发表过论文者优先
 
-Nice to have:
-- Experience with large-scale feature stores
-- Multi-modal learning experience
-- C++ / CUDA for performance-critical code
+加分项:
+- 有大规模特征工程经验
+- 有多模态学习经验
+- 有 C++ / CUDA 性能优化经验
 
-Responsibilities:
-- Design and deploy recommendation models
-- Lead A/B testing and drive metric improvements
-- Collaborate with engineering team on system design
-- Publish papers and contribute to the community
+岗位职责:
+- 设计和部署推荐模型
+- 主导 A/B 测试，推动业务指标提升
+- 与工程团队协作进行系统设计
+- 发表论文，贡献社区
 
-Salary: 40K-70K RMB/month
+薪资: 40K-70K/月

@@ -117,6 +117,12 @@ function recText(r) {
   return { strong_recommend: '强烈推荐', recommend: '推荐', neutral: '中性', not_recommend: '不推荐' }[r] || r
 }
 function recConf(c) { return { high: '高置信度', medium: '中置信度', low: '低置信度' }[c] || c }
+function questionCategory(c) {
+  return { technical: '技术', project: '项目', behavioral: '行为', system_design: '系统设计', coding: '编程', other: '其他' }[c] || c
+}
+function questionDifficulty(d) {
+  return { easy: '简单', medium: '中等', hard: '困难' }[d] || d
+}
 function getRankClass(i) { return i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '' }
 function getCandidateByName(name) { return candidates.value.find(c => c.candidate_name === name) }
 function stageIcon(s) {
@@ -506,6 +512,24 @@ onMounted(loadData)
                   <div><span class="strengths">✓ 优势</span> {{ (c.match.strengths || []).join('; ') }}</div>
                   <div style="margin-top: 4px;"><span class="weaknesses">✗ 不足</span> {{ (c.match.weaknesses || []).join('; ') }}</div>
                   <div v-if="c.match.reflection_note" style="margin-top: 4px;"><span class="reflection">⟳ 反思</span> {{ c.match.reflection_note }}</div>
+                </div>
+              </details>
+              <details v-if="c.interview_questions?.questions?.length">
+                <summary>💬 定制面试题（{{ c.interview_questions.questions.length }} 道）</summary>
+                <div style="margin-top: 10px;">
+                  <div class="interview-rationale">{{ c.interview_questions.rationale }}</div>
+                  <div v-for="(q, qi) in c.interview_questions.questions" :key="qi" class="question-item">
+                    <div class="question-head">
+                      <span class="question-num">{{ qi + 1 }}</span>
+                      <span class="question-cat">{{ questionCategory(q.category) }}</span>
+                      <span class="question-diff" :class="q.difficulty">{{ questionDifficulty(q.difficulty) }}</span>
+                      <span class="question-skill">{{ q.target_skill }}</span>
+                    </div>
+                    <div class="question-text">{{ q.question }}</div>
+                    <div v-if="q.expected_answer_outline" class="question-answer">
+                      参考答案: {{ Array.isArray(q.expected_answer_outline) ? q.expected_answer_outline.join('; ') : q.expected_answer_outline }}
+                    </div>
+                  </div>
                 </div>
               </details>
             </div>
