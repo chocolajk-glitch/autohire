@@ -166,8 +166,7 @@ def parse_resume_via_mcp_or_local(
 ) -> dict[str, Any]:
     """优先通过 MCP 调 parse_resume, 失败时降级到本地直接调用.
 
-    Returns:
-        ParsedResume 的 dict.
+    降级时强制 use_mcp=False 防止递归.
     """
     try:
         client = get_resume_mcp_client()
@@ -178,13 +177,16 @@ def parse_resume_via_mcp_or_local(
     except Exception as e:
         logger.warning("MCP parse_resume failed (%s), falling back to local", e)
         from agents.resume_parser import parse_resume_file
-        return parse_resume_file(file_path, provider=llm_provider).model_dump(exclude_none=True)
+        return parse_resume_file(file_path, provider=llm_provider, use_mcp=False).model_dump(exclude_none=True)
 
 
 def parse_jd_via_mcp_or_local(
     text: str, llm_provider: str = "qwen"
 ) -> dict[str, Any]:
-    """优先通过 MCP 调 parse_jd, 失败时降级到本地."""
+    """优先通过 MCP 调 parse_jd, 失败时降级到本地.
+
+    降级时强制 use_mcp=False 防止递归 (parse_jd_text 默认 use_mcp=True).
+    """
     try:
         client = get_resume_mcp_client()
         return client.call_tool_sync("parse_jd", {
@@ -194,4 +196,5 @@ def parse_jd_via_mcp_or_local(
     except Exception as e:
         logger.warning("MCP parse_jd failed (%s), falling back to local", e)
         from agents.jd_parser import parse_jd_text
-        return parse_jd_text(text, provider=llm_provider).model_dump(exclude_none=True)
+        # 关键: use_mcp=False 防止无限递归
+        return parse_jd_text(text, provider=llm_provider, use_mcp=False).model_dump(exclude_none=True)

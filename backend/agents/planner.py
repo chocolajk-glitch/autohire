@@ -98,10 +98,10 @@ def run_pipeline(
     from agents.reporter import HITLConfig, generate_candidate_report
     from agents.resume_parser import parse_resume_file, parse_resume_text
 
-    def _cb(name: str, status: str, duration_ms: int = 0, error: str | None = None) -> None:
+    def _cb(name: str, status: str, duration_ms: int = 0, error: str | None = None, **extra: Any) -> None:
         if step_callback:
-            logger.info("pipeline step_callback: %s -> %s (dur=%dms)", name, status, duration_ms)
-            step_callback(name, status, duration_ms=duration_ms, error=error)
+            logger.info("pipeline step_callback: %s -> %s (dur=%dms, extra=%s)", name, status, duration_ms, list(extra.keys()))
+            step_callback(name, status, duration_ms=duration_ms, error=error, **extra)
 
     ctx = PipelineContext()
     t0 = time.time()
@@ -125,6 +125,34 @@ def run_pipeline(
         return ctx
     s.duration_ms = int((time.time() - t0) * 1000)
     _cb(s.name, "success", duration_ms=s.duration_ms)
+
+    # Step 1.5: 动态路由决策 - 分析 JD + 简历特征, 决定走哪条路径
+    # 只在简历是文件时做 OCR 检测; 否则只根据 JD 关键词分类
+    from agents.router import detect_route
+    # 先读一下简历文本 (为了 OCR 检测); 不依赖 LLM
+    resume_text_for_route = None
+    if resume_is_file:
+        try:
+            from core.tools.document_parser import parse_any
+            resume_text_for_route = parse_any(resume_text_or_path)
+        except Exception:
+            pass
+
+    route_decision = detect_route(
+        ctx.jd,
+        resume_path=resume_text_or_path if resume_is_file else None,
+        resume_text=resume_text_for_route,
+    )
+    ctx.metadata["route"] = route_decision.route
+    ctx.metadata["route_reason"] = route_decision.reason
+    ctx.metadata["route_keywords"] = route_decision.matched_keywords
+    logger.info(
+        "route decision: %s (reason: %s)",
+        route_decision.route, route_decision.reason
+    )
+    # 推 stage 事件 (前端作为 route_detected 特殊 key 处理, 不进 5 阶段进度)
+    _cb("route_detected", "success", duration_ms=0,
+        route=route_decision.route, reason=route_decision.reason)
 
     # Step 2: 解析简历
     t1 = time.time()

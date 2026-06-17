@@ -50,7 +50,7 @@ def structured_call(
     user: str,
     output_model: type[T],
     *,
-    max_retries: int = 4,
+    max_retries: int = 2,
 ) -> T:
     """让 LLM 输出 JSON, 解析+校验, 失败时最多重试 max_retries 次.
 
@@ -125,11 +125,21 @@ def _heuristic_fix(data: dict, model: type[BaseModel]) -> dict:
         annotation = field.annotation
         if annotation is None:
             return val
-        ann_str = str(annotation)
-        outer_type = field.outer_type_ if hasattr(field, "outer_type_") else None
+        # 提取 Optional/Union 内的真实类型
+        real_type = annotation
+        try:
+            from typing import get_args, get_origin
+            args = get_args(annotation)
+            if args:
+                # Optional[X] / X | None -> 取第一个非 None
+                non_none = [a for a in args if a is not type(None)]
+                if non_none:
+                    real_type = non_none[0]
+        except Exception:
+            pass
 
         # bool 字段
-        if annotation is bool and not isinstance(val, bool):
+        if real_type is bool and not isinstance(val, bool):
             if isinstance(val, str):
                 lv = val.strip().lower()
                 if lv in ("true", "yes", "1", "是"):
@@ -141,7 +151,7 @@ def _heuristic_fix(data: dict, model: type[BaseModel]) -> dict:
             return val
 
         # int 字段
-        if annotation is int and not isinstance(val, bool):
+        if real_type is int and not isinstance(val, bool):
             if isinstance(val, str):
                 lv = val.strip().lower()
                 if lv in ("required", "必备", "必须", "critical"):
@@ -160,25 +170,8 @@ def _heuristic_fix(data: dict, model: type[BaseModel]) -> dict:
             return val
 
         # Literal 字段 - 不修复, 让 Pydantic validate 报错, LLM 重试时自己改
-        # (启发式映射容易误判, 比如 "experience" 不在白名单但其实该用 "experience")
 
-        # list[InnerModel]
-        if hasattr(annotation, "__args__"):
-            args = annotation.__args__
-            if len(args) == 1 and isinstance(val, list):
-                inner_type = args[0]
-                # InnerType 可能是模型 (有 model_fields) 或基本类型
-                if isinstance(inner_type, type) and issubclass(inner_type, BaseModel):
-                    fixed_list = []
-                    for item in val:
-                        if isinstance(item, dict):
-                            fixed_list.append(fix_one(item, type("F", (inner_type,), {})()))  # 用 type 模拟 FieldInfo
-                            # 实际更简单: 递归调 fix_data
-                            fixed_list[-1] = _heuristic_fix(item, inner_type)
-                        else:
-                            fixed_list.append(item)
-                    return fixed_list
-
+        # list[InnerModel] - 不在这里处理, 由 fix_data 递归处理
         return val
 
     def fix_data(d, m):

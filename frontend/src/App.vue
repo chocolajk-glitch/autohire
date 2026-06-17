@@ -12,13 +12,13 @@ const selectedJD = ref('')
 const selectedResumes = ref([])
 const enableReflection = ref(false)
 const runQuestions = ref(false)
-const llmProvider = ref('qwen')
+const llmProvider = ref('minimax')
 
 // 模型选项
 const LLM_OPTIONS = [
-  { value: 'qwen', label: '通义千问 Qwen', desc: '阿里云百炼 · 中文强 · 价格便宜 (推荐默认)' },
-  { value: 'deepseek', label: 'DeepSeek', desc: '深度求索 · 推理强 · 余额不足时会报 402' },
-  { value: 'minimax', label: 'MiniMax M2.7', desc: 'minimaxi.com · OpenAI 兼容 · 已配置 API Key · 思考链可分离' },
+  { value: 'minimax', label: 'MiniMax M2.7', desc: 'minimaxi.com · OpenAI 兼容 · 速度最快 · 已配置 API Key' },
+  { value: 'qwen', label: '通义千问 Qwen', desc: '阿里云百炼 · 中文强 · 余额已欠费 (暂时不可用)' },
+  { value: 'deepseek', label: 'DeepSeek', desc: '深度求索 · 推理强 · 余额已欠费 (暂时不可用)' },
 ]
 
 const jobId = ref(null)
@@ -42,6 +42,16 @@ const STAGE_DEFS = [
   { key: 'generate_report', label: '生成报告', icon: '📊' },
 ]
 const stages = ref(STAGE_DEFS.map(s => ({ ...s, status: 'pending', duration_ms: 0 })))
+
+// 动态路由信息
+const routeInfo = ref(null)
+const ROUTE_LABELS = {
+  algorithm_specialist: '算法专项匹配',
+  frontend_specialist: '前端专项匹配',
+  ocr_fallback: 'OCR 解析路径',
+  standard: '标准匹配路径',
+}
+const routeLabel = computed(() => routeInfo.value ? (ROUTE_LABELS[routeInfo.value.route] || routeInfo.value.route) : '')
 
 // 计算属性
 const canStart = computed(() => selectedJD.value && selectedResumes.value.length > 0 && !isRunning.value)
@@ -160,6 +170,7 @@ async function startBatch() {
   progress.value = 0
   currentCandidate.value = ''
   resetStages()
+  routeInfo.value = null
   isRunning.value = true
 
   const resp = await fetch(`${API}/api/batch/run`, {
@@ -181,16 +192,23 @@ async function startBatch() {
 
 function listenSSE(jid) {
   const es = new EventSource(`${API}/api/batch/${jid}/stream`)
-  const handler = (eventName) => (e) => {
-    const data = JSON.parse(e.data)
-    if (eventName === 'log') {
-      if (data.event === 'stage') {
-        _applyStageEvent(data.step, data.status, data.duration_ms || 0)
-        return
-      }
-      logs.value.push(data)
-      nextTick(() => { if (logBox.value) logBox.value.scrollTop = logBox.value.scrollHeight; })
-    } else if (eventName === 'progress') {
+const handler = (eventName) => (e) => {
+            const data = JSON.parse(e.data)
+            if (eventName === 'log') {
+              if (data.event === 'stage') {
+                _applyStageEvent(data.step, data.status, data.duration_ms || 0)
+                // 路由决策事件 (后端推 'route_detected' stage)
+                if (data.step === 'route_detected' && data.route) {
+                  routeInfo.value = {
+                    route: data.route,
+                    reason: data.reason || '',
+                  }
+                }
+                return
+              }
+              logs.value.push(data)
+              nextTick(() => { if (logBox.value) logBox.value.scrollTop = logBox.value.scrollHeight; })
+            } else if (eventName === 'progress') {
       progress.value = data.progress
       currentCandidate.value = data.current_candidate
     } else if (eventName === 'status') {
@@ -333,6 +351,10 @@ onMounted(loadData)
           <div v-if="currentStageMessage" class="stage-current">
             <span style="font-size: 16px;">⏳</span>
             <span>{{ currentStageMessage }}</span>
+          </div>
+          <div v-if="routeInfo" class="stage-current" style="background: var(--surface); border-style: dashed; margin-top: 8px;">
+            <span style="font-size: 14px;">🧭</span>
+            <span>动态路由: <strong>{{ routeLabel }}</strong> · {{ routeInfo.reason }}</span>
           </div>
         </div>
 
