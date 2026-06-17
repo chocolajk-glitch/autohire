@@ -216,11 +216,47 @@ async def _run_batch_job(job_id: str, req: BatchRequest) -> None:
         loop = asyncio.get_running_loop()
 
         # 包装 run_batch, 让它在每个 step 开始/完成时通过 callback 推 stage
+        _STAGE_ORDER = {
+            "route_detected": 0.5,
+            "parse_resume": 1,
+            "match_with_reflection": 2,
+            "match": 2,
+            "interview_questions_crew": 3,
+            "generate_report": 4,
+        }
+        _STAGES_PER_RESUME = 5  # route + parse_resume + match + interview + report
+        _cand_idx = [0]  # mutable counter, 跟踪当前处理到第几份简历
+
+        def _update_progress(step_name: str, status: str) -> None:
+            """根据当前阶段更新细粒度进度."""
+            if status != "running":
+                return
+            if step_name == "parse_jd":
+                # JD 只解析一次, 所有简历共用 → 进度 0
+                state.progress = 0.0
+                return
+            if step_name in _STAGE_ORDER:
+                stage_pos = _STAGE_ORDER[step_name]
+                state.progress = (_cand_idx[0] + stage_pos / _STAGES_PER_RESUME) / len(resume_paths)
+
         def step_callback(step_name: str, status: str, **extra: Any) -> None:
-            """在同步 run_batch 中被调用的回调. 直接同步 append 到 state.log (线程安全)."""
+            """在同步 run_batch 中被调用的回调. 推 stage + 更新进度."""
             stage = {"event": "stage", "step": step_name, "status": status, "ts": time.time(), **extra}
             state.log.append(stage)
             logger.info("[job %s] stage %s -> %s", job_id, step_name, status)
+
+            # 在 parse_resume 时检测简历切换 (此时 processing 事件已入队)
+            if step_name == "parse_resume" and status == "running":
+                for entry in reversed(state.log):
+                    if entry.get("event") == "processing":
+                        cand = entry.get("candidate", "")
+                        for idx, rp in enumerate(resume_paths):
+                            if rp.stem == cand:
+                                _cand_idx[0] = idx
+                                break
+                        break
+
+            _update_progress(step_name, status)
 
         # 在 run_batch 之前先 mark parse_jd 完成
         await push_stage("parse_jd", "success", note="JD 已在批量开始前解析, 实际耗时见 run_batch 内部 step")
