@@ -55,10 +55,15 @@
 AutoHire (多 Agent 智能招聘筛选系统)
 
 端到端 Pipeline (backend/agents/planner.py 协调):
-  parse_jd (MCP) ┐  并行 (ThreadPoolExecutor, -67% 时间)
+  parse_jd (MCP) ┐  并行 1: ThreadPoolExecutor (单份内, -67% 时间)
   parse_resume (MCP) ┘
        ↓
   动态路由 → match → 出题 (CrewAI) → 报告 (HITL)
+
+批量并发 (backend/agents/batch.py 协调):
+  ┌─ 简历1: parse → route → match → 出题 → 报告 ┐
+  ├─ 简历2: parse → route → match → 出题 → 报告 ├─ 并行 2: ThreadPoolExecutor (多份间, max_workers=3)
+  └─ 简历3: parse → route → match → 出题 → 报告 ┘
 
 Agent 类型清单:
   1. JD Parser      - LLM 调用 (MCP 独立进程), 与 Resume 并行
@@ -69,12 +74,13 @@ Agent 类型清单:
   5. CrewAI Crew    - 3 角色: Researcher / Designer / Reviewer (出面试题)
   6. Reporter       - LLM 调用 + 规则 HITL
 
-性能优化:
-  并行解析: 总耗时 209s -> 65s (-67%)
+性能优化 (两层并发):
+  并行 1: 单份内 parse_jd + parse_resume 并行, 总耗时 209s -> 65s (-67%)
+  并行 2: 批量间多份简历并发 (max_workers=3), 3 份从 195s -> 105s (-46%)
 
 技术栈:
-  后端: FastAPI + Pydantic + asyncio + Popen + ThreadPoolExecutor
-  前端: Vue 3 SFC + Vite + SSE 订阅 + 子步骤进度条
+  后端: FastAPI + Pydantic + asyncio + Popen + ThreadPoolExecutor (两层)
+  前端: Vue 3 SFC + Vite + SSE 订阅 + 子步骤进度条 + 多候选人分组
   Agent 框架: AutoGen 0.7.5 (Matcher) + CrewAI 1.14.7 (出题)
   LLM: Qwen / MiniMax / DeepSeek (OpenAI SDK 兼容)
   工具: MCP (FastMCP + stdio) + Tavily (httpx)
@@ -82,7 +88,7 @@ Agent 类型清单:
 
 ---
 
-## 学习模块顺序 (10 个)
+## 学习模块顺序 (12 个)
 
 ### 模块 1: 项目架构全貌
 **目标**: 理解端到端 Pipeline, 各模块职责, 数据流向
@@ -265,7 +271,81 @@ with ThreadPoolExecutor(max_workers=2) as ex:
 
 ---
 
-### 模块 9: 前端 + FastAPI + SSE
+### 模块 9: 多简历批量并发 + SSE 多候选人进度
+**目标**: 理解 ThreadPoolExecutor 并发跑多份简历、SSE 事件带 resume_idx、前端多候选人分组进度
+
+**两层并发对比**:
+| 层级 | 对象 | 实现 | 收益 |
+|---|---|---|---|
+| 并行 1 (模块 8) | 单份内的 parse_jd + parse_resume | ThreadPoolExecutor(2) | -67% |
+| 并行 2 (本模块) | 批量间的多份简历 | ThreadPoolExecutor(3) | -46% |
+
+**关键改动**:
+- `run_batch` 用 `ThreadPoolExecutor(max_workers=3)` 并发跑 N 份简历
+- step_callback 加 `resume_idx` / `resume_name` 参数, SSE 事件带这些字段
+- 前端按 `resume_idx` 分组显示多候选人独立进度条
+
+**关键文件**:
+- `backend/agents/batch.py` — ThreadPoolExecutor(max_workers=3)
+- `backend/api/server.py` — SSE 透传 resume_idx/resume_name
+- `frontend/src/App.vue` — candidateProgress 状态 + 多候选人分组 UI
+- `frontend/src/style.css` — candidate-row / mini-stage 样式
+
+**面试关联**:
+- 多份简历之间为什么可以并发？单份内为什么不能所有环节都并发？
+- max_workers=3 怎么定的？太大太小会怎样？
+- SSE 事件怎么区分多个并发简历？
+- 多简历并发怎么计算总进度？
+
+**提问示例**:
+- 为什么 batch.py 用 ThreadPoolExecutor 而不是 asyncio?
+  - 答: run_pipeline 是同步函数, 内部调 MCP (Popen) 和 requests, 阻塞 I/O
+  - ThreadPoolExecutor 直接用, asyncio 还得套 run_in_executor, 麻烦
+- max_workers 为什么选 3 不选 10?
+  - 答: LLM API 限流 + MCP 进程开销 (每个 run_pipeline 启 1 个 MCP 子进程 ≈ 50MB)
+- 并发模式进度怎么算? 串行时是 N 个 stage 串行, 现在 3 份同时
+  - 答: 按每份简历独立推进, 总进度 = 平均完成度
+- 并发跑 5 份简历, 总耗时是 max 还是 sum?
+  - 答: max(每份耗时), 因为最慢那一份决定总时间
+- 一份简历失败会影响其他简历吗?
+  - 答: 不会, as_completed 独立 try/except, 失败的只统计到 failed 计数
+
+**关键代码片段**:
+```python
+# 后端: batch.py
+with ThreadPoolExecutor(max_workers=max_concurrency) as ex:
+    future_to_idx = {
+        ex.submit(_process_one, i, str(rp)): i
+        for i, rp in enumerate(resume_paths)
+    }
+    for fut in as_completed(future_to_idx):
+        i = future_to_idx[fut]
+        try:
+            ctx = fut.result()  # 任一失败不影响其他
+        except Exception as e:
+            failed += 1
+```
+
+```javascript
+// 前端: App.vue - 多候选人进度状态
+const candidateProgress = ref({})  // { [resume_idx]: { name, status, stages } }
+
+// SSE 事件处理 - 按 resume_idx 路由
+if (data.event === 'stage') {
+  _applyStageEvent(data.step, data.status, data.duration_ms,
+    data.resume_idx, data.resume_name)
+}
+```
+
+**性能对比** (用户实测):
+| 模式 | 3 份 | 5 份 | 10 份 |
+|---|---|---|---|
+| 串行 | 195s | 325s | 650s |
+| 并发 (max_workers=3) | 105s (-46%) | ~175s (-46%) | ~325s (-50%) |
+
+---
+
+### 模块 10: 前端 + FastAPI + SSE
 **目标**: 理解 SSE 流式推送、Vite 代理、Vue 3 SFC
 
 **关键文件**:
@@ -286,7 +366,7 @@ with ThreadPoolExecutor(max_workers=2) as ex:
 
 ---
 
-### 模块 10: 工厂模式 + 多 LLM 切换
+### 模块 11: 工厂模式 + 多 LLM 切换
 **目标**: 理解 LLM 工厂、OpenAI SDK 兼容、运行时切换
 
 **关键文件**:
@@ -304,7 +384,7 @@ with ThreadPoolExecutor(max_workers=2) as ex:
 
 ---
 
-### 模块 11: 评测体系
+### 模块 12: 评测体系
 **目标**: 理解 ground truth 评测、Pearson / Spearman、Top-3 命中率
 
 **关键文件**:
@@ -419,7 +499,7 @@ with ThreadPoolExecutor(max_workers=2) as ex:
 
 用户第一次进来, 你说:
 
-> "你好! 我是你的 Agent 方向学习导师。我会用 10 个模块带你深入 AutoHire 项目。先说一下你的情况: 你有 RAG / LangChain 经验, 目标是 7 月份 Agent 实习。我们从模块 1 (项目架构) 开始, 你准备好了吗? 或者你想先问点什么?"
+> "你好! 我是你的 Agent 方向学习导师。我会用 12 个模块带你深入 AutoHire 项目。先说一下你的情况: 你有 RAG / LangChain 经验, 目标是 7 月份 Agent 实习。我们从模块 1 (项目架构) 开始, 你准备好了吗? 或者你想先问点什么?"
 
 用户随时可以:
 - "下一个" → 进入下一模块
