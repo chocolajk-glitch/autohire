@@ -55,20 +55,26 @@
 AutoHire (多 Agent 智能招聘筛选系统)
 
 端到端 Pipeline (backend/agents/planner.py 协调):
-  parse_jd (MCP) → parse_resume (MCP) → 动态路由 → match → 出题 (CrewAI) → 报告 (HITL)
+  parse_jd (MCP) ┐  并行 (ThreadPoolExecutor, -67% 时间)
+  parse_resume (MCP) ┘
+       ↓
+  动态路由 → match → 出题 (CrewAI) → 报告 (HITL)
 
 Agent 类型清单:
-  1. JD Parser      - LLM 调用 (MCP 独立进程)
-  2. Resume Parser  - LLM 调用 (MCP 独立进程)
+  1. JD Parser      - LLM 调用 (MCP 独立进程), 与 Resume 并行
+  2. Resume Parser  - LLM 调用 (MCP 独立进程), 与 JD 并行
   3. 动态路由        - 纯 Python 关键词分类 (不是 Agent)
   4. Matcher        - LLM 单评 (默认) 或 AutoGen SelectorGroupChat (use_autogen=True)
                        Assessor Agent + Refiner Agent 双 Agent 协作 = 反思
   5. CrewAI Crew    - 3 角色: Researcher / Designer / Reviewer (出面试题)
   6. Reporter       - LLM 调用 + 规则 HITL
 
+性能优化:
+  并行解析: 总耗时 209s -> 65s (-67%)
+
 技术栈:
-  后端: FastAPI + Pydantic + asyncio + Popen
-  前端: Vue 3 SFC + Vite + SSE 订阅
+  后端: FastAPI + Pydantic + asyncio + Popen + ThreadPoolExecutor
+  前端: Vue 3 SFC + Vite + SSE 订阅 + 子步骤进度条
   Agent 框架: AutoGen 0.7.5 (Matcher) + CrewAI 1.14.7 (出题)
   LLM: Qwen / MiniMax / DeepSeek (OpenAI SDK 兼容)
   工具: MCP (FastMCP + stdio) + Tavily (httpx)
@@ -211,7 +217,55 @@ Agent 类型清单:
 
 ---
 
-### 模块 8: 前端 + FastAPI + SSE
+### 模块 8: 并行解析 + 进度条适配
+**目标**: 理解 ThreadPoolExecutor 并行、子步骤状态跟踪、前端 UI 适配
+
+**关键改动**:
+- 后端用 `ThreadPoolExecutor(max_workers=2)` 并行跑 parse_jd 和 parse_resume
+- 进度条合并为"解析 JD + 简历"一个 stage，内部显示两个子步骤状态
+- 性能提升: 总耗时从 ~209s 降到 ~65s (-67%)
+
+**关键文件**:
+- `backend/agents/planner.py` — ThreadPoolExecutor 并行
+- `frontend/src/App.vue` — STAGE_DEFS children + child_status
+- `frontend/src/style.css` — stage-children / child-dot 样式
+
+**面试关联**:
+- 为什么要并行？哪些环节可以并行？
+- ThreadPoolExecutor 和 asyncio 区别？
+- 进度条怎么适配并行任务（子步骤独立状态）？
+
+**提问示例**:
+- 为什么 parse_jd 和 parse_resume 可以并行？有没有依赖关系？
+- 任一失败另一个怎么办？答：用 `try/except` 独立捕获
+- 前端进度条怎么知道子步骤状态？答：每个子事件单独推 SSE
+- 性能为什么不是减半而是减 67%？答：JD 17s + 简历 76s，并行后 max=76s
+
+**关键代码片段**:
+```python
+# 后端: planner.py
+with ThreadPoolExecutor(max_workers=2) as ex:
+    f_jd = ex.submit(_parse_jd)
+    f_resume = ex.submit(_parse_resume)
+    ctx.jd = f_jd.result()
+    ctx.resume = f_resume.result()
+```
+
+```javascript
+// 前端: App.vue
+{
+  key: 'parse',
+  label: '解析 JD + 简历',
+  children: [
+    { key: 'parse_jd', label: '解析 JD' },
+    { key: 'parse_resume', label: '解析简历' },
+  ],
+}
+```
+
+---
+
+### 模块 9: 前端 + FastAPI + SSE
 **目标**: 理解 SSE 流式推送、Vite 代理、Vue 3 SFC
 
 **关键文件**:
@@ -232,7 +286,7 @@ Agent 类型清单:
 
 ---
 
-### 模块 9: 工厂模式 + 多 LLM 切换
+### 模块 10: 工厂模式 + 多 LLM 切换
 **目标**: 理解 LLM 工厂、OpenAI SDK 兼容、运行时切换
 
 **关键文件**:
@@ -250,7 +304,7 @@ Agent 类型清单:
 
 ---
 
-### 模块 10: 评测体系
+### 模块 11: 评测体系
 **目标**: 理解 ground truth 评测、Pearson / Spearman、Top-3 命中率
 
 **关键文件**:
