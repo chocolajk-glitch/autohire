@@ -373,6 +373,65 @@ button.secondary:hover:not(:disabled) {
 .child-dot.failed { background: #ef4444; color: #fff; border-color: #ef4444; }
 .child-dot.running { background: #f59e0b; color: #fff; border-color: #f59e0b; animation: pulse 1.5s infinite; }
 .child-done { color: var(--text-secondary); text-decoration: line-through; text-decoration-color: var(--border); }
+.candidate-list {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.candidate-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.candidate-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 200px;
+  flex-shrink: 0;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+.candidate-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 11px;
+  line-height: 1;
+}
+.candidate-dot.pending { background: var(--surface); border: 1px solid var(--border); color: var(--text-tertiary); }
+.candidate-dot.running { background: #f59e0b; color: #fff; animation: pulse 1.5s infinite; }
+.candidate-dot.success { background: #10b981; color: #fff; }
+.candidate-dot.failed { background: #ef4444; color: #fff; }
+.candidate-stages {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.mini-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-tertiary);
+}
+.mini-stage.running { background: #fef3c7; border-color: #fbbf24; color: #92400e; }
+.mini-stage.success { background: #d1fae5; border-color: #10b981; color: #065f46; }
+.mini-stage.failed { background: #fee2e2; border-color: #ef4444; color: #991b1b; }
+.mini-time { font-size: 10px; opacity: 0.75; }
 .stage-current {
   background: var(--surface-soft);
   border: 1px solid var(--border);

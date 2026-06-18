@@ -208,7 +208,8 @@ async def _run_batch_job(job_id: str, req: BatchRequest) -> None:
                 continue
             state.current_candidate = p.stem
             state.progress = i / len(resume_paths)
-            state.add_log("processing", candidate=p.stem, idx=i + 1, total=len(resume_paths))
+            state.add_log("processing", candidate=p.stem, idx=i + 1, total=len(resume_paths),
+                          resume_idx=i, resume_name=p.stem)
             await asyncio.sleep(0.05)
 
         # 真正的批量 (同步, 阻塞 1-5 分钟)
@@ -231,7 +232,7 @@ async def _run_batch_job(job_id: str, req: BatchRequest) -> None:
         _STAGES_PER_RESUME = 5  # route + parse_resume + match + interview + report
         _cand_idx = [0]  # mutable counter, 跟踪当前处理到第几份简历
 
-        def _update_progress(step_name: str, status: str) -> None:
+        def _update_progress(step_name: str, status: str, resume_idx: int | None = None) -> None:
             """根据当前阶段更新细粒度进度."""
             if status != "running":
                 return
@@ -241,16 +242,37 @@ async def _run_batch_job(job_id: str, req: BatchRequest) -> None:
                 return
             if step_name in _STAGE_ORDER:
                 stage_pos = _STAGE_ORDER[step_name]
-                state.progress = (_cand_idx[0] + stage_pos / _STAGES_PER_RESUME) / len(resume_paths)
+                # 并发模式用传入的 resume_idx; 串行模式用 _cand_idx[0]
+                idx = resume_idx if resume_idx is not None else _cand_idx[0]
+                state.progress = (idx + stage_pos / _STAGES_PER_RESUME) / len(resume_paths)
 
         def step_callback(step_name: str, status: str, **extra: Any) -> None:
             """在同步 run_batch 中被调用的回调. 推 stage + 更新进度."""
-            stage = {"event": "stage", "step": step_name, "status": status, "ts": time.time(), **extra}
-            state.log.append(stage)
-            logger.info("[job %s] stage %s -> %s", job_id, step_name, status)
+            # 从 extra 里取 resume_idx (并发模式下 batch.py 会传进来)
+            resume_idx = extra.get("resume_idx")
+            resume_name = extra.get("resume_name")
 
-            # 在 parse_resume 时检测简历切换 (此时 processing 事件已入队)
-            if step_name == "parse_resume" and status == "running":
+            # processing 事件: 每份简历的整体状态
+            if step_name == "processing":
+                evt = {"event": "processing", "status": status, "ts": time.time(),
+                       "resume_idx": resume_idx, "resume_name": resume_name,
+                       "total": extra.get("total", len(resume_paths))}
+                state.log.append(evt)
+                # 标记当前处理哪个简历
+                if resume_idx is not None:
+                    state.current_candidate = resume_name or resume_paths[resume_idx].stem
+                _update_progress(step_name, status, resume_idx=resume_idx)
+                return
+
+            # 普通 stage 事件 (带 resume_idx 让前端区分并发中的多个简历)
+            stage = {"event": "stage", "step": step_name, "status": status,
+                     "ts": time.time(), "resume_idx": resume_idx, "resume_name": resume_name,
+                     **extra}
+            state.log.append(stage)
+            logger.info("[job %s] stage %s -> %s (resume_idx=%s)", job_id, step_name, status, resume_idx)
+
+            # 兼容老的 processing 事件 (简历切换检测)
+            if step_name == "parse_resume" and status == "running" and resume_idx is None:
                 for entry in reversed(state.log):
                     if entry.get("event") == "processing":
                         cand = entry.get("candidate", "")
@@ -260,7 +282,7 @@ async def _run_batch_job(job_id: str, req: BatchRequest) -> None:
                                 break
                         break
 
-            _update_progress(step_name, status)
+            _update_progress(step_name, status, resume_idx=resume_idx)
 
         # 在 run_batch 之前先 mark parse_jd 完成
         await push_stage("parse_jd", "success", note="JD 已在批量开始前解析, 实际耗时见 run_batch 内部 step")

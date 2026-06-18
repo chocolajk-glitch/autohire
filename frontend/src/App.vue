@@ -26,6 +26,9 @@ const isRunning = ref(false)
 const progress = ref(0)
 const currentCandidate = ref('')
 const logs = ref([])
+// 并发模式下: 每个候选人独立的进度
+// 结构: { [resume_idx]: { name, status, currentStep, stageStates } }
+const candidateProgress = ref({})
 const result = ref(null)
 const summary = ref({})
 const ranking = ref([])
@@ -138,10 +141,18 @@ function questionDifficulty(d) {
 function getRankClass(i) { return i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '' }
 function getCandidateByName(name) { return candidates.value.find(c => c.candidate_name === name) }
 function stageIcon(s) {
-  if (s.status === 'success') return '✅'
-  if (s.status === 'failed') return '❌'
-  if (s.status === 'running') return s.icon
+  if (s.status === 'success') return '✓'
+  if (s.status === 'failed') return '✗'
+  if (s.status === 'running') return '⏳'
   return '○'
+}
+function resumeLabel(name) {
+  if (!name) return ''
+  return RESUME_LABELS[name] || RESUME_LABELS[name.replace(/\.pdf$/, '')] || name
+}
+function stageShortLabel(k) {
+  const map = { parse: '解析', match: '匹配', generate_questions: '出题', generate_report: '报告' }
+  return map[k] || k
 }
 function stageTime(s) {
   if (s.duration_ms > 0) return `${(s.duration_ms / 1000).toFixed(1)}s`
@@ -156,8 +167,52 @@ function resetStages() {
     duration_ms: 0,
     child_status: s.children ? Object.fromEntries(s.children.map(c => [c.key, 'pending'])) : null,
   }))
+  candidateProgress.value = {}
 }
-function _applyStageEvent(stepName, status, durationMs = 0) {
+
+function _onProcessingEvent(data) {
+  // data: { event: 'processing', status: 'running'|'success'|'failed', resume_idx, resume_name, total }
+  const idx = data.resume_idx
+  if (idx === null || idx === undefined) return
+  if (!candidateProgress.value[idx]) {
+    candidateProgress.value[idx] = {
+      name: data.resume_name,
+      status: 'pending',
+      stages: {
+        parse: { status: 'pending', duration_ms: 0 },
+        match: { status: 'pending', duration_ms: 0 },
+        generate_questions: { status: 'pending', duration_ms: 0 },
+        generate_report: { status: 'pending', duration_ms: 0 },
+      },
+    }
+  }
+  candidateProgress.value[idx].name = data.resume_name
+  candidateProgress.value[idx].status = data.status
+  candidateProgress.value = { ...candidateProgress.value }
+}
+function _applyStageEvent(stepName, status, durationMs = 0, resumeIdx = null, resumeName = null) {
+  // 并发模式: 更新该候选人自己的 stage 状态 (而不影响全局 stages)
+  if (resumeIdx !== null && resumeName) {
+    _updateCandidateProgress(resumeIdx, resumeName, stepName, status, durationMs)
+    // match key 别名
+    let key = stepName
+    if (key === 'match_with_reflection' || key === 'match' || key === 'autogen_matcher_team') key = 'match'
+    // 全局 stages 仍按 "当前活动候选人" 显示 (取最新 active 的)
+    if (status === 'running') {
+      _applyGlobalStage(key, status, durationMs)
+    } else if (status === 'success' || status === 'failed') {
+      // 仅当该候选人所有步骤都完成, 才更新全局 stages 为完成态
+      // 简化: 总是更新全局 stages 为最终态, 前端用 candidateProgress 主导显示
+      _applyGlobalStage(key, status, durationMs)
+    }
+    return
+  }
+
+  // 串行模式: 单候选人, 直接更新全局 stages
+  _applyGlobalStage(stepName, status, durationMs)
+}
+
+function _applyGlobalStage(stepName, status, durationMs) {
   let key = stepName
   if (key === 'match_with_reflection' || key === 'match' || key === 'autogen_matcher_team') key = 'match'
 
@@ -170,12 +225,9 @@ function _applyStageEvent(stepName, status, durationMs = 0) {
         if (status === 'success' && durationMs > 0) {
           stage.duration_ms = Math.max(stage.duration_ms || 0, durationMs)
         }
-        // 任一 child 进入 running → parent 进入 running
         if (status === 'running') {
           stage.status = 'running'
         }
-        // 所有 child 都 success → parent success
-        // 任一 child failed → parent failed
         if (Object.values(stage.child_status).every(s => s === 'success')) {
           stage.status = 'success'
         } else if (Object.values(stage.child_status).some(s => s === 'failed')) {
@@ -186,12 +238,55 @@ function _applyStageEvent(stepName, status, durationMs = 0) {
     }
   }
 
-  // 普通 stage
   const idx = stages.value.findIndex(s => s.key === key)
   if (idx < 0) return
   const cur = stages.value[idx]
   if (cur.status === 'running' && durationMs > 0) cur.duration_ms = durationMs
   cur.status = status
+}
+
+function _updateCandidateProgress(idx, name, stepName, status, durationMs) {
+  // 初始化该候选人
+  if (!candidateProgress.value[idx]) {
+    candidateProgress.value[idx] = {
+      name,
+      status: 'pending',
+      stages: {
+        parse: { status: 'pending', duration_ms: 0 },
+        match: { status: 'pending', duration_ms: 0 },
+        generate_questions: { status: 'pending', duration_ms: 0 },
+        generate_report: { status: 'pending', duration_ms: 0 },
+      },
+    }
+  }
+  const cp = candidateProgress.value[idx]
+  cp.name = name
+
+  // stepName -> 候选人自己的 stage key
+  let stageKey = stepName
+  if (stepName === 'parse_jd' || stepName === 'parse_resume' || stepName === 'route_detected') stageKey = 'parse'
+  else if (stepName === 'match_with_reflection' || stepName === 'match' || stepName === 'autogen_matcher_team') stageKey = 'match'
+  else if (stepName === 'interview_questions_crew') stageKey = 'generate_questions'
+
+  if (cp.stages[stageKey]) {
+    cp.stages[stageKey].status = status
+    if (status === 'success' && durationMs > 0) {
+      cp.stages[stageKey].duration_ms = durationMs
+    }
+  }
+
+  // 候选人整体状态
+  const allStages = Object.values(cp.stages)
+  if (allStages.every(s => s.status === 'success')) {
+    cp.status = 'success'
+  } else if (allStages.some(s => s.status === 'failed')) {
+    cp.status = 'failed'
+  } else if (allStages.some(s => s.status === 'running')) {
+    cp.status = 'running'
+  }
+
+  // 强制触发响应式更新
+  candidateProgress.value = { ...candidateProgress.value }
 }
 
 // 用户操作
@@ -302,7 +397,10 @@ const handler = (eventName) => (e) => {
             const data = JSON.parse(e.data)
             if (eventName === 'log') {
               if (data.event === 'stage') {
-                _applyStageEvent(data.step, data.status, data.duration_ms || 0)
+                _applyStageEvent(
+                  data.step, data.status, data.duration_ms || 0,
+                  data.resume_idx, data.resume_name,
+                )
                 // 路由决策事件 (后端推 'route_detected' stage)
                 if (data.step === 'route_detected' && data.route) {
                   routeInfo.value = {
@@ -310,6 +408,10 @@ const handler = (eventName) => (e) => {
                     reason: data.reason || '',
                   }
                 }
+                return
+              }
+              if (data.event === 'processing') {
+                _onProcessingEvent(data)
                 return
               }
               logs.value.push(data)
@@ -473,6 +575,24 @@ onMounted(loadData)
                   </span>
                   <span :class="{ 'child-done': s.child_status?.[c.key] === 'success' }">{{ c.label }}</span>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 并发模式: 多候选人分组进度 -->
+          <div v-if="Object.keys(candidateProgress).length > 1" class="candidate-list">
+            <div v-for="(cp, idx) in candidateProgress" :key="idx" class="candidate-row">
+              <div class="candidate-name">
+                <span :class="['candidate-dot', cp.status]">
+                  {{ cp.status === 'success' ? '✓' : cp.status === 'failed' ? '✗' : cp.status === 'running' ? '⏳' : '○' }}
+                </span>
+                <span>{{ resumeLabel(cp.name) }}</span>
+              </div>
+              <div class="candidate-stages">
+                <span v-for="(s, k) in cp.stages" :key="k" :class="['mini-stage', s.status]" :title="k + ': ' + s.status">
+                  {{ stageShortLabel(k) }}
+                  <span v-if="s.duration_ms > 0" class="mini-time">{{ (s.duration_ms / 1000).toFixed(0) }}s</span>
+                </span>
               </div>
             </div>
           </div>

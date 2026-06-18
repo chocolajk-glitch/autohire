@@ -79,9 +79,10 @@ def run_batch(
     run_interview_questions: bool = False,
     llm_provider: str = "deepseek",
     use_autogen: bool = False,
+    max_concurrency: int = 3,
     step_callback=None,
 ) -> tuple[BatchReport, BatchSummary]:
-    """跑批量评估.
+    """跑批量评估 (多简历并发).
 
     Args:
         jd_path: JD 文件路径 (txt/pdf/docx)
@@ -90,11 +91,14 @@ def run_batch(
         run_interview_questions: 是否跑面试出题
         llm_provider: LLM provider
         use_autogen: 是否走 AutoGen Matcher (SelectorGroupChat 双 Agent 协作 = 反思)
+        max_concurrency: 最大并发数 (默认 3, 避免 LLM 限流和 MCP 进程过多)
         step_callback: 可选, fn(step_name, status, **extra), 每步状态变化时调用
+            会带 resume_idx 和 resume_name 参数
 
     Returns:
         (BatchReport, BatchSummary)
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     from agents.jd_parser import parse_jd_file, parse_jd_text
 
     def _cb(step: str, status: str, **extra) -> None:
@@ -122,12 +126,15 @@ def run_batch(
     rec_buckets: dict[str, int] = {}
     top_records: list[dict] = []
 
+    # 推一个 processing 事件, 让前端知道哪些简历要处理
     for i, rp in enumerate(resume_paths):
-        rp = str(rp)
-        cand_stem = Path(rp).stem
-        logger.info("[batch] processing %s", rp)
+        cand_stem = Path(str(rp)).stem
+        _cb("processing", "running", resume_idx=i, resume_name=cand_stem, total=len(resume_paths))
 
-        ctx: PipelineContext = run_pipeline(
+    def _process_one(i: int, rp: str) -> PipelineContext:
+        cand_stem = Path(rp).stem
+        logger.info("[batch] processing %s (idx=%d)", rp, i)
+        ctx = run_pipeline(
             jd_text_or_path=jd_text if jd_text else jd_path,
             resume_text_or_path=rp,
             jd_is_file=(jd_text is None),
@@ -135,27 +142,56 @@ def run_batch(
             run_interview_questions=run_interview_questions,
             llm_provider=llm_provider,
             use_autogen=use_autogen,
-            step_callback=_cb,
+            step_callback=lambda step, status, **extra: _cb(
+                step, status,
+                resume_idx=i, resume_name=cand_stem,
+                **extra,
+            ),
         )
+        return ctx
 
-        if ctx.report is not None and ctx.resume is not None:
-            candidate_reports.append(ctx.report)
-            succeeded += 1
-            s = ctx.report.match.overall_score
-            scores.append(s)
-            score_buckets[_score_bucket(s)] = score_buckets.get(_score_bucket(s), 0) + 1
-            rec_buckets[ctx.report.recommendation] = rec_buckets.get(ctx.report.recommendation, 0) + 1
-            if ctx.report.needs_human_review:
-                hitl_count += 1
-            top_records.append({
-                "candidate": ctx.resume.candidate_name,
-                "score": s,
-                "recommendation": ctx.report.recommendation,
-                "needs_human_review": ctx.report.needs_human_review,
-            })
-        else:
+    # 2. 并发跑多份简历 (ThreadPoolExecutor, max_workers=max_concurrency)
+    results: list[PipelineContext | Exception] = [None] * len(resume_paths)
+    with ThreadPoolExecutor(max_workers=max_concurrency) as ex:
+        future_to_idx = {
+            ex.submit(_process_one, i, str(rp)): i
+            for i, rp in enumerate(resume_paths)
+        }
+        for fut in as_completed(future_to_idx):
+            i = future_to_idx[fut]
+            cand_stem = Path(str(resume_paths[i])).stem
+            try:
+                ctx = fut.result()
+                results[i] = ctx
+            except Exception as e:
+                logger.exception("[batch] pipeline raised for %s", cand_stem)
+                results[i] = e
+
+    # 3. 收集结果
+    for i, ctx_or_exc in enumerate(results):
+        cand_stem = Path(str(resume_paths[i])).stem
+        if isinstance(ctx_or_exc, Exception) or ctx_or_exc.report is None or ctx_or_exc.resume is None:
             failed += 1
-            logger.warning("[batch] failed for %s", rp)
+            _cb("processing", "failed", resume_idx=i, resume_name=cand_stem, total=len(resume_paths))
+            logger.warning("[batch] failed for %s", cand_stem)
+            continue
+
+        ctx = ctx_or_exc
+        candidate_reports.append(ctx.report)
+        succeeded += 1
+        s = ctx.report.match.overall_score
+        scores.append(s)
+        score_buckets[_score_bucket(s)] = score_buckets.get(_score_bucket(s), 0) + 1
+        rec_buckets[ctx.report.recommendation] = rec_buckets.get(ctx.report.recommendation, 0) + 1
+        if ctx.report.needs_human_review:
+            hitl_count += 1
+        top_records.append({
+            "candidate": ctx.resume.candidate_name,
+            "score": s,
+            "recommendation": ctx.report.recommendation,
+            "needs_human_review": ctx.report.needs_human_review,
+        })
+        _cb("processing", "success", resume_idx=i, resume_name=cand_stem, total=len(resume_paths))
 
     # 排序 + 取 top
     top_records.sort(key=lambda r: r["score"], reverse=True)
