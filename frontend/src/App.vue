@@ -35,13 +35,25 @@ const logBox = ref(null)
 
 // 5 阶段进度
 const STAGE_DEFS = [
-  { key: 'parse_jd', label: '解析 JD', icon: '📄' },
-  { key: 'parse_resume', label: '解析简历', icon: '📋' },
+  {
+    key: 'parse',
+    label: '解析 JD + 简历',
+    icon: '📑',
+    children: [
+      { key: 'parse_jd', label: '解析 JD' },
+      { key: 'parse_resume', label: '解析简历' },
+    ],
+  },
   { key: 'match', label: '匹配 + 反思', icon: '🎯' },
   { key: 'interview_questions_crew', label: '生成面试题', icon: '💬' },
   { key: 'generate_report', label: '生成报告', icon: '📊' },
 ]
-const stages = ref(STAGE_DEFS.map(s => ({ ...s, status: 'pending', duration_ms: 0 })))
+const stages = ref(STAGE_DEFS.map(s => ({
+  ...s,
+  status: 'pending',
+  duration_ms: 0,
+  child_status: s.children ? Object.fromEntries(s.children.map(c => [c.key, 'pending'])) : null,
+})))
 
 // 动态路由信息
 const routeInfo = ref(null)
@@ -138,11 +150,43 @@ function stageTime(s) {
   return ''
 }
 function resetStages() {
-  stages.value = STAGE_DEFS.map(s => ({ ...s, status: 'pending', duration_ms: 0 }))
+  stages.value = STAGE_DEFS.map(s => ({
+    ...s,
+    status: 'pending',
+    duration_ms: 0,
+    child_status: s.children ? Object.fromEntries(s.children.map(c => [c.key, 'pending'])) : null,
+  }))
 }
 function _applyStageEvent(stepName, status, durationMs = 0) {
   let key = stepName
   if (key === 'match_with_reflection' || key === 'match' || key === 'autogen_matcher_team') key = 'match'
+
+  // 先找是否是某个 stage 的 child
+  for (const stage of stages.value) {
+    if (stage.children) {
+      const child = stage.children.find(c => c.key === key)
+      if (child) {
+        stage.child_status[key] = status
+        if (status === 'success' && durationMs > 0) {
+          stage.duration_ms = Math.max(stage.duration_ms || 0, durationMs)
+        }
+        // 任一 child 进入 running → parent 进入 running
+        if (status === 'running') {
+          stage.status = 'running'
+        }
+        // 所有 child 都 success → parent success
+        // 任一 child failed → parent failed
+        if (Object.values(stage.child_status).every(s => s === 'success')) {
+          stage.status = 'success'
+        } else if (Object.values(stage.child_status).some(s => s === 'failed')) {
+          stage.status = 'failed'
+        }
+        return
+      }
+    }
+  }
+
+  // 普通 stage
   const idx = stages.value.findIndex(s => s.key === key)
   if (idx < 0) return
   const cur = stages.value[idx]
@@ -421,6 +465,15 @@ onMounted(loadData)
               <div class="stage-dot" :class="s.status">{{ stageIcon(s) }}</div>
               <div class="stage-label">{{ s.label }}</div>
               <div class="stage-time">{{ stageTime(s) }}</div>
+              <!-- 子步骤状态 (用于并行解析) -->
+              <div v-if="s.children && (s.status === 'running' || s.status === 'success' || s.status === 'failed')" class="stage-children">
+                <div v-for="c in s.children" :key="c.key" class="stage-child">
+                  <span :class="['child-dot', s.child_status?.[c.key]]">
+                    {{ s.child_status?.[c.key] === 'success' ? '✓' : s.child_status?.[c.key] === 'failed' ? '✗' : '○' }}
+                  </span>
+                  <span :class="{ 'child-done': s.child_status?.[c.key] === 'success' }">{{ c.label }}</span>
+                </div>
+              </div>
             </div>
           </div>
           <div v-if="currentStageMessage" class="stage-current">

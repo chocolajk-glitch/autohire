@@ -343,6 +343,36 @@ button.secondary:hover:not(:disabled) {
   margin-top: 2px;
   font-variant-numeric: tabular-nums;
 }
+.stage-children {
+  margin-top: 6px;
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.stage-child {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.child-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  font-size: 10px;
+  line-height: 1;
+}
+.child-dot.success { background: #10b981; color: #fff; border-color: #10b981; }
+.child-dot.failed { background: #ef4444; color: #fff; border-color: #ef4444; }
+.child-dot.running { background: #f59e0b; color: #fff; border-color: #f59e0b; animation: pulse 1.5s infinite; }
+.child-done { color: var(--text-secondary); text-decoration: line-through; text-decoration-color: var(--border); }
 .stage-current {
   background: var(--surface-soft);
   border: 1px solid var(--border);

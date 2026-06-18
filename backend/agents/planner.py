@@ -118,30 +118,60 @@ def run_pipeline(
     ctx = PipelineContext()
     t0 = time.time()
 
-    # Step 1: 解析 JD
-    s = ctx.add_step("parse_jd")
-    s.status = "running"
-    _cb(s.name, "running")
-    try:
-        if jd_is_file:
-            ctx.jd = parse_jd_file(jd_text_or_path, provider=llm_provider)
-        else:
-            ctx.jd = parse_jd_text(jd_text_or_path, provider=llm_provider)
-        s.status = "success"
-    except Exception as e:
-        s.status = "failed"
-        s.error = str(e)[:300]
-        s.duration_ms = int((time.time() - t0) * 1000)
-        _cb(s.name, "failed", duration_ms=s.duration_ms, error=s.error)
-        logger.exception("parse_jd failed")
-        return ctx
-    s.duration_ms = int((time.time() - t0) * 1000)
-    _cb(s.name, "success", duration_ms=s.duration_ms)
+    # Step 1+2: 并行解析 JD + 简历 (省 ~50% 时间)
+    from concurrent.futures import ThreadPoolExecutor
 
-    # Step 1.5: 动态路由决策 - 分析 JD + 简历特征, 决定走哪条路径
-    # 只在简历是文件时做 OCR 检测; 否则只根据 JD 关键词分类
+    def _parse_jd() -> ParsedJD:
+        if jd_is_file:
+            return parse_jd_file(jd_text_or_path, provider=llm_provider)
+        return parse_jd_text(jd_text_or_path, provider=llm_provider)
+
+    def _parse_resume() -> ParsedResume:
+        if resume_is_file:
+            return parse_resume_file(resume_text_or_path, provider=llm_provider)
+        return parse_resume_text(resume_text_or_path, provider=llm_provider)
+
+    s_jd = ctx.add_step("parse_jd")
+    s_resume = ctx.add_step("parse_resume")
+    s_jd.status = "running"
+    s_resume.status = "running"
+    _cb(s_jd.name, "running")
+    _cb(s_resume.name, "running")
+
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        f_jd = ex.submit(_parse_jd)
+        f_resume = ex.submit(_parse_resume)
+        # 先收 JD
+        try:
+            ctx.jd = f_jd.result()
+            s_jd.status = "success"
+            s_jd.duration_ms = int((time.time() - t0) * 1000)
+            _cb(s_jd.name, "success", duration_ms=s_jd.duration_ms)
+        except Exception as e:
+            s_jd.status = "failed"
+            s_jd.error = str(e)[:300]
+            s_jd.duration_ms = int((time.time() - t0) * 1000)
+            _cb(s_jd.name, "failed", duration_ms=s_jd.duration_ms, error=s_jd.error)
+            logger.exception("parse_jd failed")
+        # 再收简历
+        try:
+            ctx.resume = f_resume.result()
+            s_resume.status = "success"
+            s_resume.duration_ms = int((time.time() - t0) * 1000)
+            _cb(s_resume.name, "success", duration_ms=s_resume.duration_ms)
+        except Exception as e:
+            s_resume.status = "failed"
+            s_resume.error = str(e)[:300]
+            s_resume.duration_ms = int((time.time() - t0) * 1000)
+            _cb(s_resume.name, "failed", duration_ms=s_resume.duration_ms, error=s_resume.error)
+            logger.exception("parse_resume failed")
+
+    # 任一失败则退出
+    if s_jd.status != "success" or s_resume.status != "success":
+        return ctx
+
+    # Step 1.5: 动态路由决策 - 基于已解析的 JD + 简历文本
     from agents.router import detect_route
-    # 先读一下简历文本 (为了 OCR 检测); 不依赖 LLM
     resume_text_for_route = None
     if resume_is_file:
         try:
@@ -162,30 +192,8 @@ def run_pipeline(
         "route decision: %s (reason: %s)",
         route_decision.route, route_decision.reason
     )
-    # 推 stage 事件 (前端作为 route_detected 特殊 key 处理, 不进 5 阶段进度)
     _cb("route_detected", "success", duration_ms=0,
         route=route_decision.route, reason=route_decision.reason)
-
-    # Step 2: 解析简历
-    t1 = time.time()
-    s = ctx.add_step("parse_resume")
-    s.status = "running"
-    _cb(s.name, "running")
-    try:
-        if resume_is_file:
-            ctx.resume = parse_resume_file(resume_text_or_path, provider=llm_provider)
-        else:
-            ctx.resume = parse_resume_text(resume_text_or_path, provider=llm_provider)
-        s.status = "success"
-    except Exception as e:
-        s.status = "failed"
-        s.error = str(e)[:300]
-        s.duration_ms = int((time.time() - t1) * 1000)
-        _cb(s.name, "failed", duration_ms=s.duration_ms, error=s.error)
-        logger.exception("parse_resume failed")
-        return ctx
-    s.duration_ms = int((time.time() - t1) * 1000)
-    _cb(s.name, "success", duration_ms=s.duration_ms)
 
     # Step 3: 匹配 (LLM 单评; 反思要 use_autogen=True)
     t2 = time.time()
@@ -295,25 +303,54 @@ def _run_pipeline_with_autogen_matcher(
     ctx = PipelineContext()
     t0 = time.time()
 
-    # Step 1: 解析 JD
-    s = ctx.add_step("parse_jd")
-    s.status = "running"
-    _cb(s.name, "running")
-    try:
+    # Step 1+2: 并行解析 JD + 简历 (省 ~50% 时间)
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _parse_jd() -> ParsedJD:
         if jd_is_file:
-            ctx.jd = parse_jd_file(jd_text_or_path, provider=llm_provider)
-        else:
-            ctx.jd = parse_jd_text(jd_text_or_path, provider=llm_provider)
-        s.status = "success"
-    except Exception as e:
-        s.status = "failed"
-        s.error = str(e)[:300]
-        s.duration_ms = int((time.time() - t0) * 1000)
-        _cb(s.name, "failed", duration_ms=s.duration_ms, error=s.error)
-        logger.exception("parse_jd failed")
+            return parse_jd_file(jd_text_or_path, provider=llm_provider)
+        return parse_jd_text(jd_text_or_path, provider=llm_provider)
+
+    def _parse_resume() -> ParsedResume:
+        if resume_is_file:
+            return parse_resume_file(resume_text_or_path, provider=llm_provider)
+        return parse_resume_text(resume_text_or_path, provider=llm_provider)
+
+    s_jd = ctx.add_step("parse_jd")
+    s_resume = ctx.add_step("parse_resume")
+    s_jd.status = "running"
+    s_resume.status = "running"
+    _cb(s_jd.name, "running")
+    _cb(s_resume.name, "running")
+
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        f_jd = ex.submit(_parse_jd)
+        f_resume = ex.submit(_parse_resume)
+        try:
+            ctx.jd = f_jd.result()
+            s_jd.status = "success"
+            s_jd.duration_ms = int((time.time() - t0) * 1000)
+            _cb(s_jd.name, "success", duration_ms=s_jd.duration_ms)
+        except Exception as e:
+            s_jd.status = "failed"
+            s_jd.error = str(e)[:300]
+            s_jd.duration_ms = int((time.time() - t0) * 1000)
+            _cb(s_jd.name, "failed", duration_ms=s_jd.duration_ms, error=s_jd.error)
+            logger.exception("parse_jd failed")
+        try:
+            ctx.resume = f_resume.result()
+            s_resume.status = "success"
+            s_resume.duration_ms = int((time.time() - t0) * 1000)
+            _cb(s_resume.name, "success", duration_ms=s_resume.duration_ms)
+        except Exception as e:
+            s_resume.status = "failed"
+            s_resume.error = str(e)[:300]
+            s_resume.duration_ms = int((time.time() - t0) * 1000)
+            _cb(s_resume.name, "failed", duration_ms=s_resume.duration_ms, error=s_resume.error)
+            logger.exception("parse_resume failed")
+
+    if s_jd.status != "success" or s_resume.status != "success":
         return ctx
-    s.duration_ms = int((time.time() - t0) * 1000)
-    _cb(s.name, "success", duration_ms=s.duration_ms)
 
     # Step 1.5: 动态路由
     from agents.router import detect_route
@@ -335,27 +372,6 @@ def _run_pipeline_with_autogen_matcher(
     ctx.metadata["pipeline"] = "autogen_matcher"
     _cb("route_detected", "success", duration_ms=0,
         route=route_decision.route, reason=route_decision.reason)
-
-    # Step 2: 解析简历
-    t1 = time.time()
-    s = ctx.add_step("parse_resume")
-    s.status = "running"
-    _cb(s.name, "running")
-    try:
-        if resume_is_file:
-            ctx.resume = parse_resume_file(resume_text_or_path, provider=llm_provider)
-        else:
-            ctx.resume = parse_resume_text(resume_text_or_path, provider=llm_provider)
-        s.status = "success"
-    except Exception as e:
-        s.status = "failed"
-        s.error = str(e)[:300]
-        s.duration_ms = int((time.time() - t1) * 1000)
-        _cb(s.name, "failed", duration_ms=s.duration_ms, error=s.error)
-        logger.exception("parse_resume failed")
-        return ctx
-    s.duration_ms = int((time.time() - t1) * 1000)
-    _cb(s.name, "success", duration_ms=s.duration_ms)
 
     # Step 3: 匹配 — AutoGen SelectorGroupChat (Agent 协作)
     t2 = time.time()
