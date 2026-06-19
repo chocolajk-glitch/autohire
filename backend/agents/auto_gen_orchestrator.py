@@ -192,14 +192,20 @@ _REFINER_SYSTEM = """你是一个严格的质量审查员, 负责检查简历匹
 ```"""
 
 
-async def _run_matcher_team(jd_dict: dict, resume_dict: dict) -> dict:
+async def _run_matcher_team(jd_dict: dict, resume_dict: dict, route: str | None = None) -> dict:
     """Tool: SelectorGroupChat — Assessor + Refiner 协作评估.
 
     流程:
     1. Assessor 初评 → 输出 JSON
     2. Refiner 审查 → 输出 JSON
-    3. Assessor 回应 (如有修正) → 输出最终 JSON
+    3. Assessor 回应 (如有修正) → 输出最终结果
     4. 提取最终结果返回
+
+    Args:
+        jd_dict: ParsedJD 字典
+        resume_dict: ParsedResume 字典
+        route: 路由决策 (algorithm_specialist / frontend_specialist / ocr_fallback / standard),
+               会注入到 Assessor 的 system prompt 里
     """
     from autogen_agentchat.agents import AssistantAgent
     from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
@@ -215,10 +221,16 @@ async def _run_matcher_team(jd_dict: dict, resume_dict: dict) -> dict:
         f"【简历】\n{resume_text}"
     )
 
+    # 根据路由决策拼接 Assessor 的 system prompt (复用 matcher.py 的注入逻辑)
+    from agents.matcher import _build_system_prompt
+    assessor_system = _build_system_prompt(route)
+    logger.info("autogen matcher: route=%s, assessor system_prompt=%d chars",
+                route, len(assessor_system))
+
     assessor = AssistantAgent(
         name="Assessor",
         model_client=client,
-        system_message=_ASSESSOR_SYSTEM,
+        system_message=assessor_system,
     )
 
     refiner = AssistantAgent(

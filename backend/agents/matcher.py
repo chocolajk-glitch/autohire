@@ -66,6 +66,43 @@ def _build_user_prompt(
 class MatcherConfig:
     provider: str = "deepseek"
     enable_web_search: bool = True  # 联网搜索增强
+    route: str | None = None  # 路由决策 (algorithm_specialist / frontend_specialist / standard / ocr_fallback)
+
+
+# 路由 -> 专项匹配 prompt 注入
+_ROUTE_PROMPT_SUFFIX = {
+    "algorithm_specialist": (
+        "\n\n【专项匹配 - 算法岗】\n"
+        "本岗位重点评估候选人的算法能力, 请特别关注:\n"
+        "- 推荐系统 / 排序 / 召回 / DNN / 深度学习 / 机器学习 项目经验\n"
+        "- PyTorch / TensorFlow / FAISS / embedding 等工具熟练度\n"
+        "- 论文、比赛、ACM/Kaggle 等技术荣誉\n"
+        "- 算法与工程的结合 (能否把模型落地到生产)"
+    ),
+    "frontend_specialist": (
+        "\n\n【专项匹配 - 前端岗】\n"
+        "本岗位重点评估候选人的前端能力, 请特别关注:\n"
+        "- Vue / React / Angular 实际项目深度 (而不是只列在 skills 里)\n"
+        "- 组件库 / 工程化 (Webpack / Vite / Pinia / ECharts) 经验\n"
+        "- UI/UX 理解和性能优化经验\n"
+        "- 移动端 / 跨端 (RN/小程序/UniApp) 经验"
+    ),
+    "ocr_fallback": (
+        "\n\n【专项匹配 - OCR 简历】\n"
+        "简历来自 OCR 识别, 文本可能有识别错误. 请:\n"
+        "- 对识别模糊的字段 (姓名/学校/公司) 给出 confidence 标注\n"
+        "- 技能/年限等信息如识别不完整, 在 weaknesses 中提示"
+    ),
+    "standard": "",  # 标准路径无特殊注入
+}
+
+
+def _build_system_prompt(route: str | None) -> str:
+    """根据路由决策拼装 system prompt."""
+    suffix = _ROUTE_PROMPT_SUFFIX.get(route or "", "")
+    if suffix:
+        logger.info("matcher: route=%s -> prompt injection (%d chars)", route, len(suffix))
+    return SYSTEM_PROMPT + suffix
 
 
 def match_resume_to_jd(
@@ -80,7 +117,8 @@ def match_resume_to_jd(
 
     流程:
     1. (可选) 联网搜索补充公司+岗位信息
-    2. LLM 单次评估
+    2. 根据路由决策注入专项 prompt
+    3. LLM 单次评估
     """
     from agents.web_searcher import search_company_info
 
@@ -92,14 +130,15 @@ def match_resume_to_jd(
             logger.info("web search context added (%d chars)", len(web_context))
 
     client = get_llm(cfg.provider)
+    system_prompt = _build_system_prompt(cfg.route)
     result = structured_call(
         client,
-        system=SYSTEM_PROMPT,
+        system=system_prompt,
         user=_build_user_prompt(jd, resume, web_context=web_context),
         output_model=MatchResult,
     )
     logger.info(
-        "match: candidate=%s overall=%d confidence=%s",
-        resume.candidate_name, result.overall_score, result.confidence,
+        "match: candidate=%s overall=%d confidence=%s route=%s",
+        resume.candidate_name, result.overall_score, result.confidence, cfg.route,
     )
     return result

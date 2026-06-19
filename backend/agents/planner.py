@@ -204,7 +204,10 @@ def run_pipeline(
         ctx.match = match_resume_to_jd(
             ctx.jd,
             ctx.resume,
-            config=MatcherConfig(provider=llm_provider),
+            config=MatcherConfig(
+                provider=llm_provider,
+                route=ctx.metadata.get("route"),  # ← 注入路由决策
+            ),
         )
         s.status = "success"
     except Exception as e:
@@ -382,8 +385,11 @@ def _run_pipeline_with_autogen_matcher(
         # 把 ParsedJD/ParsedResume 转为 dict 传给 SelectorGroupChat
         jd_dict = ctx.jd.model_dump(exclude_none=True)
         resume_dict = ctx.resume.model_dump(exclude_none=True)
-        # 跑异步 SelectorGroupChat
-        match_dict = asyncio.run(_run_matcher_team(jd_dict, resume_dict))
+        # 跑异步 SelectorGroupChat (注入路由决策到 Assessor prompt)
+        match_dict = asyncio.run(_run_matcher_team(
+            jd_dict, resume_dict,
+            route=ctx.metadata.get("route"),
+        ))
         ctx.match = MatchResult.model_validate(match_dict)
         s.status = "success"
     except Exception as e:
@@ -397,7 +403,10 @@ def _run_pipeline_with_autogen_matcher(
             from agents.matcher import MatcherConfig, match_resume_to_jd
             ctx.match = match_resume_to_jd(
                 ctx.jd, ctx.resume,
-                config=MatcherConfig(provider=llm_provider),
+                config=MatcherConfig(
+                    provider=llm_provider,
+                    route=ctx.metadata.get("route"),  # ← 注入路由决策
+                ),
             )
             s.status = "success"
             s.error = f"fallback to direct call: {str(e)[:100]}"
