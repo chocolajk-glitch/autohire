@@ -37,11 +37,11 @@ def build_demo_crew() -> Crew:
     llm = _build_llm()
 
     researcher = Agent(
-        role="Technical Researcher",
-        goal="Identify the most testable technical points from a candidate's project experience",
+        role="技术研究员 (Technical Researcher)",
+        goal="从候选人项目经验中找出最值得考察的技术点",
         backstory=(
-            "You are a senior technical interviewer. You excel at reading a candidate's "
-            "project descriptions and pinpointing 3-5 specific technical points worth probing."
+            "你是一名资深技术面试官. 你擅长阅读候选人的项目描述, "
+            "找出 3-5 个**具体可考察**的技术点."
         ),
         llm=llm,
         verbose=False,
@@ -49,11 +49,10 @@ def build_demo_crew() -> Crew:
     )
 
     question_designer = Agent(
-        role="Interview Question Designer",
-        goal="Design 3 high-quality interview questions based on the researcher's findings",
+        role="面试题设计师 (Interview Question Designer)",
+        goal="基于研究员的发现, 设计 3 道高质量面试题",
         backstory=(
-            "You are an expert at crafting interview questions. Each question should target "
-            "a specific technical point and have a clear expected answer outline."
+            "你擅长设计面试题. 每道题针对具体技术点, 附清晰的期望答案大纲."
         ),
         llm=llm,
         verbose=False,
@@ -61,11 +60,10 @@ def build_demo_crew() -> Crew:
     )
 
     reviewer = Agent(
-        role="Quality Reviewer",
-        goal="Critique the questions for clarity, depth, and fairness",
+        role="质量审核员 (Quality Reviewer)",
+        goal="审核题目是否清晰、有深度、公平",
         backstory=(
-            "You are a fair but strict reviewer. You check whether each question is "
-            "answerable, has appropriate difficulty, and is not biased."
+            "你是公平但严格的审核员. 检查每道题是否可答、难度合适、无偏见."
         ),
         llm=llm,
         verbose=False,
@@ -74,30 +72,29 @@ def build_demo_crew() -> Crew:
 
     research_task = Task(
         description=(
-            "Given the following candidate project: "
-            "'Built a multi-agent recruitment system using LangGraph + AutoGen, "
-            "with FastAPI backend, Vue frontend, and ChromaDB for memory.' "
-            "List 3-4 most testable technical points. Output as a short bulleted list."
+            "给定以下候选人项目: "
+            "'用 LangGraph + AutoGen 搭建多 Agent 招聘系统, FastAPI 后端, Vue 前端, ChromaDB 记忆存储.' "
+            "列出 3-4 个最值得考察的技术点. 输出简短的项目符号列表."
         ),
-        expected_output="A short bulleted list of 3-4 testable technical points.",
+        expected_output="3-4 个具体技术点的简短列表",
         agent=researcher,
     )
 
     design_task = Task(
         description=(
-            "Based on the researcher's findings, design 3 interview questions. "
-            "Each question should clearly state what skill it tests."
+            "基于研究员的发现, 设计 3 道面试题. "
+            "每道题要清晰说明考察什么技能."
         ),
-        expected_output="3 interview questions with their target skills.",
+        expected_output="3 道面试题 + 对应的目标技能",
         agent=question_designer,
     )
 
     review_task = Task(
         description=(
-            "Review the 3 questions. If they are good enough, reply exactly 'PASS'. "
-            "Otherwise list the issues in one sentence."
+            "审核这 3 道题. 如果质量过关, **只回复 'PASS'**. "
+            "否则用一句话列出问题."
         ),
-        expected_output="Either 'PASS' or a short list of issues.",
+        expected_output="要么 'PASS', 要么简短的问题清单",
         agent=reviewer,
     )
 
