@@ -23,6 +23,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from mcp.server.fastmcp import FastMCP  # noqa: E402
 
+from agents._prompts import JD_SYSTEM_PROMPT, RESUME_SYSTEM_PROMPT  # noqa: E402
 from core.llm_factory import get_llm  # noqa: E402
 from core.schemas import ParsedJD, ParsedResume  # noqa: E402
 from core.structured_output import structured_call  # noqa: E402
@@ -50,12 +51,9 @@ def parse_resume(file_path: str, llm_provider: str = "qwen") -> dict[str, Any]:
     if not text or len(text.strip()) < 50:
         raise ValueError(f"resume text too short or empty: {file_path}")
     client = get_llm(llm_provider)
-    system = (
-        "你是一个资深的简历解析专家. 把简历文本解析为结构化字段. "
-        "严格按照 JSON Schema 输出."
-    )
     result: ParsedResume = structured_call(
-        client, system=system, user=f"请解析以下简历:\n\n{text}", output_model=ParsedResume
+        client, system=RESUME_SYSTEM_PROMPT,
+        user=f"请解析以下简历:\n\n{text}", output_model=ParsedResume,
     )
     return result.model_dump(exclude_none=True)
 
@@ -75,12 +73,9 @@ def parse_jd(text: str, llm_provider: str = "qwen") -> dict[str, Any]:
     if not text or len(text.strip()) < 20:
         raise ValueError("JD text too short")
     client = get_llm(llm_provider)
-    system = (
-        "你是一个资深的招聘需求分析专家. 把 JD 文本解析为结构化字段. "
-        "严格按照 JSON Schema 输出, requirements 必须是扁平数组, 每条带 category 字段."
-    )
     result: ParsedJD = structured_call(
-        client, system=system, user=f"请解析以下 JD:\n\n{text}", output_model=ParsedJD
+        client, system=JD_SYSTEM_PROMPT,
+        user=f"请解析以下 JD:\n\n{text}", output_model=ParsedJD,
     )
     return result.model_dump(exclude_none=True)
 
