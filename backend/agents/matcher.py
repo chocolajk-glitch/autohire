@@ -116,9 +116,11 @@ def match_resume_to_jd(
     如果要"反思"功能, 用 use_autogen=True 走 AutoGen SelectorGroupChat.
 
     流程:
-    1. (可选) 联网搜索补充公司+岗位信息
+    1. (默认开启) 联网搜索补充公司+岗位信息 (Tavily)
     2. 根据路由决策注入专项 prompt
     3. LLM 单次评估
+
+    注: 联网搜索目前默认开启, 无 UI 勾选. MatcherConfig.enable_web_search=False 可关闭.
     """
     from agents.web_searcher import search_company_info
 
