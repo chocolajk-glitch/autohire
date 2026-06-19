@@ -91,34 +91,32 @@ def _build_inputs(jd: ParsedJD, resume: ParsedResume, match: MatchResult) -> dic
 
 def _create_crew(llm: LLM) -> Crew:
     researcher = Agent(
-        role="Senior Technical Researcher",
-        goal="Identify 3-5 most testable technical points based on the candidate's actual project experience and the JD's must-have requirements",
+        role="高级技术研究员 (Senior Technical Researcher)",
+        goal="根据候选人实际项目经验 + JD 的 must_have 要求, 找出 3-5 个最值得考察的技术点",
         backstory=(
-            "You are a senior technical interviewer. You focus on the candidate's project "
-            "details and the JD's must-have skills, identifying specific, answerable "
-            "technical points (not vague topics)."
+            "你是一名资深的技术面试官. 你专注于候选人项目细节和 JD 的 must_have 技能, "
+            "找出**具体的、可回答的**技术点 (而不是宽泛的话题)."
         ),
         llm=llm,
         verbose=False,
         allow_delegation=False,
     )
     designer = Agent(
-        role="Interview Question Designer",
-        goal="Design 3-5 high-quality interview questions, each tied to a specific technical point and with a clear expected answer outline",
+        role="面试题设计师 (Interview Question Designer)",
+        goal="设计 3-5 道高质量面试题, 每题关联具体技术点 + 有清晰的期望答案大纲",
         backstory=(
-            "You craft interview questions that are answerable, have a clear target skill, "
-            "an appropriate difficulty level, and an expected answer outline."
+            "你设计的题目: 可回答、有明确的目标技能、难度合适、附期望答案大纲."
         ),
         llm=llm,
         verbose=False,
         allow_delegation=False,
     )
     reviewer = Agent(
-        role="Quality Reviewer",
-        goal="Verify the questions are fair, well-targeted, and not biased",
+        role="质量审核员 (Quality Reviewer)",
+        goal="验证题目是否公平、目标明确、没有偏见",
         backstory=(
-            "You are a strict but fair reviewer. If a question is unanswerable from the "
-            "candidate's background, too vague, or duplicates another, you reject it."
+            "你是严格但公平的审核员. 如果题目: "
+            "1) 候选人无法根据简历回答, 2) 过于模糊, 3) 与其他题重复 —— 你就打回."
         ),
         llm=llm,
         verbose=False,
@@ -127,57 +125,52 @@ def _create_crew(llm: LLM) -> Crew:
 
     research_task = Task(
         description=(
-            "Given the following context, identify 3-5 most testable technical points.\n\n"
-            "JD requirements:\n{jd_requirements}\n\n"
-            "Resume summary:\n{resume_summary}\n\n"
-            "Match analysis:\n{match_analysis}\n\n"
-            "Output: a short bulleted list of 3-5 specific technical points. "
-            "Each point should be something the candidate could actually be asked about "
-            "based on their listed project experience."
+            "基于以下上下文, 找出 3-5 个最值得考察的技术点.\n\n"
+            "JD 要求:\n{jd_requirements}\n\n"
+            "简历摘要:\n{resume_summary}\n\n"
+            "匹配度分析:\n{match_analysis}\n\n"
+            "输出: 3-5 个具体技术点的简短列表. 每个点都应该是候选人可以根据其项目经验实际回答的."
         ),
-        expected_output="A short bulleted list of 3-5 testable technical points.",
+        expected_output="3-5 个具体技术点的简短列表",
         agent=researcher,
     )
 
     design_task = Task(
         description=(
-            "Based on the researcher's findings, design 3-5 interview questions.\n\n"
-            "Context:\n"
+            "基于 Research 找出的技术点, 设计 3-5 道面试题.\n\n"
+            "上下文:\n"
             "JD: {jd_requirements}\n"
-            "Resume: {resume_summary}\n"
-            "Match: {match_analysis}\n"
-            "Researcher's findings are in the previous task output.\n\n"
-            "Each question MUST include: question, category, difficulty, target_skill, "
-            "expected_answer_outline.\n\n"
-            "CRITICAL - YOUR OUTPUT IS THE FINAL DELIVERABLE:\n"
-            "After this, a Reviewer agent will give feedback, but the FINAL output of "
-            "this crew is YOUR output here. Output ONLY a single JSON object in a "
-            "```json``` code block. The JSON must have:\n"
-            "- 'questions': an array of 3-5 question objects\n"
-            "- 'rationale': a short string explaining the design choices\n"
-            "Do not include any other text outside the JSON code block."
+            "简历: {resume_summary}\n"
+            "匹配度: {match_analysis}\n"
+            "Research 找出的考点在上一任务输出里.\n\n"
+            "每道题必须包含: question (题目), category (类别), difficulty (难度), "
+            "target_skill (目标技能), expected_answer_outline (期望答案大纲).\n\n"
+            "**关键 - 你的输出是最终交付物**:\n"
+            "后面会有 Reviewer 给出反馈, 但本 Crew 的最终输出就是你这里输出. "
+            "**只输出一个 JSON 对象, 用 ```json``` 代码块包裹**. JSON 必须包含:\n"
+            "- 'questions': 3-5 道题的数组\n"
+            "- 'rationale': 解释设计思路的简短字符串\n"
+            "代码块外不要有任何其他文字."
         ),
-        expected_output=(
-            "A single JSON object in a code block, with 'questions' array and 'rationale' string."
-        ),
+        expected_output="单个 JSON 对象 (代码块), 含 'questions' 数组和 'rationale' 字符串",
         agent=designer,
     )
 
     review_task = Task(
         description=(
-            "Review the 3-5 questions designed by the Designer. For each question, check:\n"
-            "1. Is it answerable from the candidate's actual project experience?\n"
-            "2. Does it have a clear target_skill?\n"
-            "3. Is the difficulty appropriate (easy/medium/hard)?\n"
-            "4. Is there an expected_answer_outline?\n"
-            "5. Are there duplicates?\n\n"
-            "If all 3-5 questions pass these checks, reply exactly 'PASS'.\n"
-            "Otherwise, list the issues concisely and ask for a fix.\n\n"
-            "Context:\n"
-            "Resume: {resume_summary}\n"
+            "审核 Designer 设计的 3-5 道题. 每道题检查:\n"
+            "1. 候选人能根据其项目经验实际回答?\n"
+            "2. 有明确的目标技能 (target_skill)?\n"
+            "3. 难度合适 (easy/medium/hard)?\n"
+            "4. 有期望答案大纲?\n"
+            "5. 题目之间有重复?\n\n"
+            "如果所有 3-5 道题都通过, **只回复 'PASS'**.\n"
+            "否则, 简洁列出问题并要求修复.\n\n"
+            "上下文:\n"
+            "简历: {resume_summary}\n"
             "JD: {jd_requirements}"
         ),
-        expected_output="Either 'PASS' or a concise list of issues to fix.",
+        expected_output="要么 'PASS', 要么简洁的问题清单",
         agent=reviewer,
     )
 
