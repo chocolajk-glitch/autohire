@@ -79,7 +79,7 @@ class ChatClient:
 def _qwen_config() -> LLMConfig:
     api_key = os.getenv("DASHSCOPE_API_KEY")
     if not api_key:
-        raise ValueError("DASHSCOPE_API_KEY not set in .env")
+        raise ValueError("DASHSCOPE_API_KEY 未在 .env 中设置")
     return LLMConfig(
         provider="qwen",
         api_key=api_key,
@@ -93,7 +93,7 @@ def _MiniMax_config() -> LLMConfig:
     api_key = os.getenv("MiniMax_API_KEY")
     base_url = os.getenv("MiniMax_BASE_URL", "https://api.minimaxi.com/v1")
     if not api_key:
-        raise ValueError("MiniMax_API_KEY not set in .env")
+        raise ValueError("MiniMax_API_KEY 未在 .env 中设置")
     return LLMConfig(
         provider="minimax",
         api_key=api_key,
@@ -108,7 +108,7 @@ def _MiniMax_config() -> LLMConfig:
 def _deepseek_config() -> LLMConfig:
     api_key = os.getenv("DEEPSEEK_API_KEY")
     if not api_key:
-        raise ValueError("DEEPSEEK_API_KEY not set in .env")
+        raise ValueError("DEEPSEEK_API_KEY 未在 .env 中设置")
     return LLMConfig(
         provider="deepseek",
         api_key=api_key,
@@ -129,7 +129,7 @@ _REGISTRY = {
 def get_llm(provider: str = "deepseek") -> ChatClient:
     """工厂入口: provider ∈ {qwen, minimax, deepseek}."""
     if provider not in _REGISTRY:
-        raise ValueError(f"unknown provider '{provider}', choose from {list(_REGISTRY)}")
+        raise ValueError(f"未知的 provider '{provider}', 可选: {list(_REGISTRY)}")
     return ChatClient(_REGISTRY[provider]())
 
 

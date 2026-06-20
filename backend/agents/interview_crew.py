@@ -28,7 +28,7 @@ def _build_llm(provider: str = "deepseek") -> LLM:
     if provider == "minimax":
         api_key = os.getenv("MiniMax_API_KEY")
         if not api_key:
-            raise RuntimeError("MiniMax_API_KEY not set")
+            raise RuntimeError("MiniMax_API_KEY 未设置")
         base_url = os.getenv("MiniMax_BASE_URL", "https://api.minimaxi.com/v1")
         return LLM(
             model="MiniMax-M2.7",
@@ -39,7 +39,7 @@ def _build_llm(provider: str = "deepseek") -> LLM:
     if provider == "deepseek":
         api_key = os.getenv("DEEPSEEK_API_KEY")
         if not api_key:
-            raise RuntimeError("DEEPSEEK_API_KEY not set")
+            raise RuntimeError("DEEPSEEK_API_KEY 未设置")
         return LLM(
             model="deepseek-chat",
             base_url="https://api.deepseek.com",
@@ -49,7 +49,7 @@ def _build_llm(provider: str = "deepseek") -> LLM:
     # qwen
     api_key = os.getenv("DASHSCOPE_API_KEY")
     if not api_key:
-        raise RuntimeError("DASHSCOPE_API_KEY not set")
+        raise RuntimeError("DASHSCOPE_API_KEY 未设置")
     return LLM(
         model="qwen-plus",
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -143,6 +143,7 @@ def _create_crew(llm: LLM) -> Crew:
             "简历: {resume_summary}\n"
             "匹配度: {match_analysis}\n"
             "Research 找出的考点在上一任务输出里.\n\n"
+            "{review_feedback}\n\n"
             "每道题必须包含: question (题目), category (类别), difficulty (难度), "
             "target_skill (目标技能), expected_answer_outline (期望答案大纲).\n\n"
             "**关键 - 你的输出是最终交付物**:\n"
@@ -269,7 +270,23 @@ def _extract_questions_from_output(raw: str) -> InterviewQuestionSet:
         return InterviewQuestionSet.model_validate(
             _normalize_questions_dict({"questions": data, "rationale": "extracted from crew output"})
         )
-    raise ValueError(f"could not extract question list from crew output: {raw[:300]}")
+    raise ValueError(f"无法从 Crew 输出中提取面试题列表: {raw[:300]}")
+
+
+def _get_design_raw(result) -> str:
+    """从 CrewAI 结果中提取 design_task 的原始输出."""
+    if hasattr(result, "tasks_output") and result.tasks_output:
+        design_output = result.tasks_output[-2] if len(result.tasks_output) >= 2 else result.tasks_output[-1]
+        return design_output.raw if hasattr(design_output, "raw") else str(design_output)
+    return result.raw if hasattr(result, "raw") else str(result)
+
+
+def _get_review_raw(result) -> str:
+    """从 CrewAI 结果中提取 review_task 的原始输出."""
+    if hasattr(result, "tasks_output") and result.tasks_output:
+        review_output = result.tasks_output[-1]
+        return review_output.raw if hasattr(review_output, "raw") else str(review_output)
+    return ""
 
 
 def generate_interview_questions(
@@ -281,22 +298,30 @@ def generate_interview_questions(
 ) -> InterviewQuestionSet:
     """跑 CrewAI 出面试题.
 
+    如果 Reviewer 未通过, 最多重试一次 (将反馈注入 design_task).
+
     Returns:
         InterviewQuestionSet: 至少 3 道题, 最多 10 道
     """
     llm = _build_llm(provider)
-    crew = _create_crew(llm)
     inputs = _build_inputs(jd, resume, match)
-    result = crew.kickoff(inputs=inputs)
-    # 取 design_task 的输出 (顺序: research -> design -> review, 所以是 -2)
-    if hasattr(result, "tasks_output") and result.tasks_output:
-        # design_task 是倒数第二个 (review 是最后一个)
-        design_output = result.tasks_output[-2] if len(result.tasks_output) >= 2 else result.tasks_output[-1]
-        raw = (
-            design_output.raw
-            if hasattr(design_output, "raw")
-            else str(design_output)
-        )
-    else:
-        raw = result.raw if hasattr(result, "raw") else str(result)
+    inputs["review_feedback"] = ""  # 首次无反馈
+
+    max_attempts = 2
+    for attempt in range(max_attempts):
+        crew = _create_crew(llm)
+        result = crew.kickoff(inputs=inputs)
+        review_raw = _get_review_raw(result)
+
+        if "PASS" in review_raw.upper() or attempt == max_attempts - 1:
+            # Reviewer 通过, 或已到最大重试次数
+            raw = _get_design_raw(result)
+            return _extract_questions_from_output(raw)
+
+        # Reviewer 未通过, 注入反馈重试
+        logger.info("Reviewer 未通过 (第 %d 次), 反馈: %s", attempt + 1, review_raw[:200])
+        inputs["review_feedback"] = f"[审核反馈 - 请根据以下问题修改题目]\n{review_raw}"
+
+    # 不会走到这里, 但保险起见
+    raw = _get_design_raw(result)
     return _extract_questions_from_output(raw)

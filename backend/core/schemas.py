@@ -38,7 +38,7 @@ class ParsedJD(BaseModel):
             return v
         lo = info.data.get("experience_years_min")
         if lo is not None and v < lo:
-            raise ValueError(f"experience_years_max {v} < min {lo}")
+            raise ValueError(f"experience_years_max {v} 小于 min {lo}")
         return v
 
 
@@ -57,7 +57,7 @@ class Education(BaseModel):
     def _check_years(cls, v: int, info) -> int:
         start = info.data.get("start_year")
         if start is not None and v < start:
-            raise ValueError(f"end_year {v} < start_year {start}")
+            raise ValueError(f"end_year {v} 小于 start_year {start}")
         return v
 
 
@@ -159,5 +159,5 @@ class BatchReport(BaseModel):
         names = {c.candidate_name for c in info.data.get("candidates", [])}
         missing = [n for n in v if n not in names]
         if missing:
-            raise ValueError(f"ranking contains unknown names: {missing}")
+            raise ValueError(f"ranking 包含未知姓名: {missing}")
         return v

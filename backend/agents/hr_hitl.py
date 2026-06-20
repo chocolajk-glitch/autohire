@@ -130,9 +130,9 @@ def submit_hr_decision(
     if recommendation is not None:
         allowed = {"strong_recommend", "recommend", "neutral", "not_recommend"}
         if recommendation not in allowed:
-            raise ValueError(f"invalid recommendation {recommendation!r}, must be one of {allowed}")
+            raise ValueError(f"无效的推荐等级 {recommendation!r}, 必须是 {allowed} 之一")
     if adjusted_score is not None and not (0 <= adjusted_score <= 100):
-        raise ValueError(f"adjusted_score must be 0-100, got {adjusted_score}")
+        raise ValueError(f"adjusted_score 必须在 0-100 之间, 收到 {adjusted_score}")
     now = datetime.utcnow().isoformat()
     with _get_conn(db_path) as conn:
         # 读取原值
@@ -142,7 +142,7 @@ def submit_hr_decision(
             (candidate_name, job_title),
         ).fetchone()
         if row is None:
-            raise ValueError(f"no pending review for {candidate_name} ({job_title})")
+            raise ValueError(f"未找到 {candidate_name} ({job_title}) 的待复核记录")
         final_score = adjusted_score if adjusted_score is not None else row["original_score"]
         final_rec = recommendation if recommendation is not None else row["original_recommendation"]
         final_note = note if note is not None else row["hr_note"]

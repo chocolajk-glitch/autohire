@@ -32,7 +32,7 @@ def _extract_json(text: str) -> dict | list:
     m = _JSON_BARE.search(text)
     if m:
         return json.loads(m.group(1))
-    raise ValueError(f"no JSON object found in LLM output: {text[:200]}...")
+    raise ValueError(f"LLM 输出中未找到 JSON 对象: {text[:200]}...")
 
 
 def _format_validation_error(err: ValidationError) -> str:
@@ -103,7 +103,7 @@ def structured_call(
             )
 
     raise RuntimeError(
-        f"structured_call failed after {max_retries + 1} attempts. Last error: {last_err}"
+        f"structured_call 在 {max_retries + 1} 次尝试后仍失败. 最后错误: {last_err}"
     )
 
 

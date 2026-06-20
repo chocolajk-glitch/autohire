@@ -71,7 +71,7 @@ def _extract_json(text: str) -> dict | list:
     m = _JSON_BARE.search(text)
     if m:
         return json.loads(m.group(1))
-    raise ValueError(f"no JSON found in: {text[:200]}...")
+    raise ValueError(f"文本中未找到 JSON: {text[:200]}...")
 
 
 # ============================================================
