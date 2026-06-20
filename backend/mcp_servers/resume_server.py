@@ -1,15 +1,21 @@
 """AutoHire MCP Server - 简历解析独立服务
 
-作为独立进程运行, 通过 stdio 与主 AutoHire 后端通信.
+作为独立进程运行, 通过 stdio / streamable-http 与主 AutoHire 后端通信.
 暴露两个工具:
 - parse_resume: 简历文件路径 -> ParsedResume JSON
 - parse_jd:     JD 文本 -> ParsedJD JSON
 
-启动方式: python -m mcp_servers.resume_server
+启动方式:
+  # stdio 模式 (单 client, 适合开发/单进程)
+  python -m mcp_servers.resume_server --transport stdio
+
+  # HTTP 模式 (支持连接池并发, 适合生产)
+  python -m mcp_servers.resume_server --transport http --port 9001
 被主进程启动: 详见 core/mcp_client.py 和 mcp_config.json
 """
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import sys
@@ -49,7 +55,7 @@ def parse_resume(file_path: str, llm_provider: str = "qwen") -> dict[str, Any]:
     logger.info("parse_resume called: %s (provider=%s)", file_path, llm_provider)
     text = parse_any(file_path)
     if not text or len(text.strip()) < 50:
-        raise ValueError(f"resume text too short or empty: {file_path}")
+        raise ValueError(f"简历文本太短或为空: {file_path}")
     client = get_llm(llm_provider)
     result: ParsedResume = structured_call(
         client, system=RESUME_SYSTEM_PROMPT,
@@ -71,7 +77,7 @@ def parse_jd(text: str, llm_provider: str = "qwen") -> dict[str, Any]:
     """
     logger.info("parse_jd called (provider=%s, len=%d)", llm_provider, len(text))
     if not text or len(text.strip()) < 20:
-        raise ValueError("JD text too short")
+        raise ValueError("JD 文本太短")
     client = get_llm(llm_provider)
     result: ParsedJD = structured_call(
         client, system=JD_SYSTEM_PROMPT,
@@ -80,6 +86,29 @@ def parse_jd(text: str, llm_provider: str = "qwen") -> dict[str, Any]:
     return result.model_dump(exclude_none=True)
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser(description="AutoHire 简历/JD 解析 MCP 服务")
+    parser.add_argument(
+        "--transport",
+        choices=["stdio", "http"],
+        default="stdio",
+        help="通信方式: stdio (默认, 单 client) / http (支持连接池并发)",
+    )
+    parser.add_argument("--host", default="127.0.0.1", help="HTTP 模式监听地址")
+    parser.add_argument("--port", type=int, default=9001, help="HTTP 模式监听端口")
+    args = parser.parse_args()
+
+    if args.transport == "stdio":
+        logger.info("starting autohire-resume-parser MCP server (stdio)")
+        mcp.run(transport="stdio")
+        return
+
+    # HTTP 模式: 改 settings 的 host/port 后启动
+    logger.info("starting autohire-resume-parser MCP server (http %s:%d)", args.host, args.port)
+    mcp.settings.host = args.host
+    mcp.settings.port = args.port
+    mcp.run(transport="streamable-http")
+
+
 if __name__ == "__main__":
-    logger.info("starting autohire-resume-parser MCP server (stdio)")
-    mcp.run(transport="stdio")
+    main()
