@@ -432,6 +432,20 @@ button.secondary:hover:not(:disabled) {
 .mini-stage.success { background: #d1fae5; border-color: #10b981; color: #065f46; }
 .mini-stage.failed { background: #fee2e2; border-color: #ef4444; color: #991b1b; }
 .mini-time { font-size: 10px; opacity: 0.75; }
+.candidate-error {
+  margin-top: 6px;
+  margin-left: 22px;
+  padding: 6px 10px;
+  background: #fef2f2;
+  border-left: 3px solid #ef4444;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #991b1b;
+  display: flex; align-items: center; gap: 6px;
+  word-break: break-word;
+}
+.candidate-error .err-icon { flex-shrink: 0; }
+.candidate-error .err-text { flex: 1; }
 .stage-current {
   background: var(--surface-soft);
   border: 1px solid var(--border);
@@ -697,6 +711,80 @@ button.secondary:hover:not(:disabled) {
   font-weight: 500;
   border: 1px solid rgba(180, 83, 9, 0.2);
 }
+
+.hitl-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 6px;
+  padding: 0 5px;
+  background: var(--hitl);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.hitl-card {
+  background: var(--surface);
+  border: 1px solid var(--hitl);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 10px;
+  background: linear-gradient(to right, rgba(180, 83, 9, 0.03), transparent 50%);
+}
+.hitl-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.hitl-original {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.hitl-reason {
+  font-size: 12px;
+  color: var(--hitl);
+  padding: 6px 10px;
+  background: var(--hitl-soft);
+  border-radius: 6px;
+  margin-bottom: 10px;
+}
+.hitl-form {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+.hitl-field {
+  flex: 1;
+  min-width: 120px;
+}
+.hitl-field label {
+  display: block;
+  font-size: 11px;
+  color: var(--text-tertiary);
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+.hitl-field input,
+.hitl-field select {
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 13px;
+}
+.hitl-result {
+  margin-top: 8px;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  display: inline-block;
+}
+.hitl-result.ok { background: #DCFCE7; color: #15803D; }
+.hitl-result.err { background: #FEE2E2; color: #B91C1C; }
 
 .empty {
   text-align: center;

@@ -126,6 +126,10 @@ function formatLogMsg(l) {
   if (l.event === 'job_created') return `任务创建 · 共 ${l.total} 份简历待评估`
   if (l.event === 'started') return '开始处理'
   if (l.event === 'error') return `❌ 错误: ${l.msg}`
+  if (l.event === 'stage' && l.status === 'failed') {
+    const cand = l.resume_name ? ` [${RESUME_LABELS[l.resume_name] || l.resume_name}]` : ''
+    return `⚠️  ${l.step} 失败${cand}${l.error ? `: ${l.error}` : ''}`
+  }
   return ''
 }
 function recText(r) {
@@ -179,10 +183,10 @@ function _onProcessingEvent(data) {
       name: data.resume_name,
       status: 'pending',
       stages: {
-        parse: { status: 'pending', duration_ms: 0 },
-        match: { status: 'pending', duration_ms: 0 },
-        generate_questions: { status: 'pending', duration_ms: 0 },
-        generate_report: { status: 'pending', duration_ms: 0 },
+        parse: { status: 'pending', duration_ms: 0, error: null },
+        match: { status: 'pending', duration_ms: 0, error: null },
+        generate_questions: { status: 'pending', duration_ms: 0, error: null },
+        generate_report: { status: 'pending', duration_ms: 0, error: null },
       },
     }
   }
@@ -190,10 +194,10 @@ function _onProcessingEvent(data) {
   candidateProgress.value[idx].status = data.status
   candidateProgress.value = { ...candidateProgress.value }
 }
-function _applyStageEvent(stepName, status, durationMs = 0, resumeIdx = null, resumeName = null) {
+function _applyStageEvent(stepName, status, durationMs = 0, resumeIdx = null, resumeName = null, errorMsg = null) {
   // 并发模式: 更新该候选人自己的 stage 状态 (而不影响全局 stages)
   if (resumeIdx !== null && resumeName) {
-    _updateCandidateProgress(resumeIdx, resumeName, stepName, status, durationMs)
+    _updateCandidateProgress(resumeIdx, resumeName, stepName, status, durationMs, errorMsg)
     // match key 别名
     let key = stepName
     if (key === 'match_with_reflection' || key === 'match' || key === 'autogen_matcher_team') key = 'match'
@@ -245,17 +249,17 @@ function _applyGlobalStage(stepName, status, durationMs) {
   cur.status = status
 }
 
-function _updateCandidateProgress(idx, name, stepName, status, durationMs) {
+function _updateCandidateProgress(idx, name, stepName, status, durationMs, errorMsg = null) {
   // 初始化该候选人
   if (!candidateProgress.value[idx]) {
     candidateProgress.value[idx] = {
       name,
       status: 'pending',
       stages: {
-        parse: { status: 'pending', duration_ms: 0 },
-        match: { status: 'pending', duration_ms: 0 },
-        generate_questions: { status: 'pending', duration_ms: 0 },
-        generate_report: { status: 'pending', duration_ms: 0 },
+        parse: { status: 'pending', duration_ms: 0, error: null },
+        match: { status: 'pending', duration_ms: 0, error: null },
+        generate_questions: { status: 'pending', duration_ms: 0, error: null },
+        generate_report: { status: 'pending', duration_ms: 0, error: null },
       },
     }
   }
@@ -272,6 +276,9 @@ function _updateCandidateProgress(idx, name, stepName, status, durationMs) {
     cp.stages[stageKey].status = status
     if (status === 'success' && durationMs > 0) {
       cp.stages[stageKey].duration_ms = durationMs
+    }
+    if (status === 'failed' && errorMsg) {
+      cp.stages[stageKey].error = errorMsg
     }
   }
 
@@ -399,7 +406,7 @@ const handler = (eventName) => (e) => {
               if (data.event === 'stage') {
                 _applyStageEvent(
                   data.step, data.status, data.duration_ms || 0,
-                  data.resume_idx, data.resume_name,
+                  data.resume_idx, data.resume_name, data.error,
                 )
                 // 路由决策事件 (后端推 'route_detected' stage)
                 if (data.step === 'route_detected' && data.route) {
@@ -436,6 +443,69 @@ const handler = (eventName) => (e) => {
   es.addEventListener('progress', handler('progress'))
   es.addEventListener('result', handler('result'))
   es.addEventListener('end', handler('end'))
+}
+
+// HR 复核
+const hitlTab = ref(false)
+const hitlPending = ref([])
+const hitlLoading = ref(false)
+const hitlSubmitting = ref({})
+const hitlResult = ref({})  // { [candidate_name]: 'ok' | 'error' }
+
+async function loadHitlPending() {
+  hitlLoading.value = true
+  try {
+    const resp = await fetch(`${API}/api/hitl/pending`)
+    hitlPending.value = await resp.json()
+  } catch (e) {
+    hitlPending.value = []
+  } finally {
+    hitlLoading.value = false
+  }
+}
+
+async function submitHitlDecision(item) {
+  const key = item.candidate_name
+  hitlSubmitting.value[key] = true
+  hitlResult.value[key] = null
+  try {
+    const body = {
+      candidate_name: item.candidate_name,
+      job_title: item.job_title,
+    }
+    if (item._adjusted_score !== undefined && item._adjusted_score !== '') {
+      body.adjusted_score = Number(item._adjusted_score)
+    }
+    if (item._recommendation) {
+      body.recommendation = item._recommendation
+    }
+    if (item._note) {
+      body.note = item._note
+    }
+    const resp = await fetch(`${API}/api/hitl/decide`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: '提交失败' }))
+      hitlResult.value[key] = 'error'
+      alert(err.detail || '提交失败')
+    } else {
+      hitlResult.value[key] = 'ok'
+      // 从列表中移除
+      hitlPending.value = hitlPending.value.filter(p => p.candidate_name !== key)
+    }
+  } catch {
+    hitlResult.value[key] = 'error'
+  } finally {
+    hitlSubmitting.value[key] = false
+  }
+}
+
+function toggleHitlTab() {
+  hitlTab.value = !hitlTab.value
+  if (hitlTab.value) loadHitlPending()
 }
 
 watch(logs, () => {
@@ -589,9 +659,16 @@ onMounted(loadData)
                 <span>{{ resumeLabel(cp.name) }}</span>
               </div>
               <div class="candidate-stages">
-                <span v-for="(s, k) in cp.stages" :key="k" :class="['mini-stage', s.status]" :title="k + ': ' + s.status">
+                <span v-for="(s, k) in cp.stages" :key="k" :class="['mini-stage', s.status]" :title="s.error ? (stageShortLabel(k) + ': ' + s.error) : (k + ': ' + s.status)">
                   {{ stageShortLabel(k) }}
                   <span v-if="s.duration_ms > 0" class="mini-time">{{ (s.duration_ms / 1000).toFixed(0) }}s</span>
+                </span>
+              </div>
+              <!-- 该候选人最近一次失败原因 (取第一个失败的 stage) -->
+              <div v-if="cp.status === 'failed'" class="candidate-error">
+                <span class="err-icon">⚠️</span>
+                <span v-for="s in cp.stages" :key="s.error">
+                  <span v-if="s.error" class="err-text">{{ stageShortLabel(Object.keys(cp.stages).find(k => cp.stages[k] === s)) }}: {{ s.error }}</span>
                 </span>
               </div>
             </div>
@@ -647,6 +724,7 @@ onMounted(loadData)
           <div class="tab-bar">
             <div class="tab" :class="{ active: tab === 'ranking' }" @click="tab = 'ranking'">🏆 排行榜</div>
             <div class="tab" :class="{ active: tab === 'cards' }" @click="tab = 'cards'">📋 详情卡片</div>
+            <div class="tab" :class="{ active: tab === 'hitl' }" @click="toggleHitlTab()">👤 HR 复核<span v-if="summary.hitl_count > 0" class="hitl-badge">{{ summary.hitl_count }}</span></div>
           </div>
 
           <div v-if="tab === 'ranking'" class="ranking">
@@ -705,6 +783,61 @@ onMounted(loadData)
                   </div>
                 </div>
               </details>
+            </div>
+          </div>
+
+          <div v-if="tab === 'hitl'">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <span style="font-size: 13px; color: var(--text-secondary);">待复核候选人（{{ hitlPending.length }} 人）</span>
+              <button class="secondary" style="width: auto; padding: 5px 14px; font-size: 12px;" @click="loadHitlPending" :disabled="hitlLoading">
+                {{ hitlLoading ? '加载中...' : '刷新' }}
+              </button>
+            </div>
+            <div v-if="hitlPending.length === 0" class="empty" style="padding: 30px 20px;">
+              暂无待复核候选人
+            </div>
+            <div v-for="item in hitlPending" :key="item.candidate_name" class="hitl-card">
+              <div class="hitl-card-head">
+                <div>
+                  <strong>{{ item.candidate_name }}</strong>
+                  <span style="color: var(--text-tertiary); font-size: 12px; margin-left: 8px;">{{ item.job_title }}</span>
+                </div>
+                <div class="hitl-original">
+                  原始分 <strong>{{ item.original_score }}</strong>
+                  · {{ recText(item.original_recommendation) }}
+                </div>
+              </div>
+              <div v-if="item.hr_note" class="hitl-reason">{{ item.hr_note }}</div>
+              <div class="hitl-form">
+                <div class="hitl-field">
+                  <label>调整分数</label>
+                  <input type="text" v-model="item._adjusted_score" placeholder="0-100，留空不改" />
+                </div>
+                <div class="hitl-field">
+                  <label>调整推荐</label>
+                  <select v-model="item._recommendation">
+                    <option value="">不改</option>
+                    <option value="strong_recommend">强烈推荐</option>
+                    <option value="recommend">推荐</option>
+                    <option value="neutral">中性</option>
+                    <option value="not_recommend">不推荐</option>
+                  </select>
+                </div>
+                <div class="hitl-field" style="flex: 2;">
+                  <label>备注</label>
+                  <input type="text" v-model="item._note" placeholder="可选，填写审核意见" />
+                </div>
+                <button
+                  class="secondary"
+                  style="width: auto; padding: 7px 18px; font-size: 13px; white-space: nowrap; align-self: flex-end;"
+                  :disabled="hitlSubmitting[item.candidate_name]"
+                  @click="submitHitlDecision(item)"
+                >
+                  {{ hitlSubmitting[item.candidate_name] ? '提交中...' : '提交决策' }}
+                </button>
+              </div>
+              <div v-if="hitlResult[item.candidate_name] === 'ok'" class="hitl-result ok">已提交</div>
+              <div v-if="hitlResult[item.candidate_name] === 'error'" class="hitl-result err">提交失败</div>
             </div>
           </div>
         </div>
