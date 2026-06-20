@@ -3,6 +3,7 @@
 设计:
 - 集成 Tavily 官方远程 MCP 服务 (https://mcp.tavily.com/mcp/)
 - 走 MCP 协议 (streamable-http) 调 tavily_search tool
+- 复用 core.mcp_client.MCPClientPool (N 个 worker 连接池 + 轮询)
 - 失败时降级到裸 httpx 直连 api.tavily.com/search
 - 没 TAVILY_API_KEY 时直接走 httpx fallback
 
@@ -15,6 +16,11 @@
 - MCP 协议层多了 1 层依赖 (远程 server 可用性)
 - httpx 直连更稳定 (单一依赖)
 - 优雅降级: MCP 挂了用户感知不到
+
+并发能力:
+- MCPClientPool 内置 N 个 _HTTPWorkerClient + round-robin
+- 5 份简历并发 batch 时, pool_size=3 真并发调 Tavily
+- 跟之前简历解析 MCP HTTP pool 架构统一
 """
 from __future__ import annotations
 
@@ -27,6 +33,9 @@ import httpx
 logger = logging.getLogger(__name__)
 
 _TAVILY_ENDPOINT = "https://api.tavily.com/search"
+_TAVILY_MCP_URL = "https://mcp.tavily.com/mcp/"
+_TAVILY_TOOL_NAME = "tavily_search"
+_POOL_SIZE = 3
 _DEFAULT_TIMEOUT = 8.0  # 秒
 
 
@@ -64,8 +73,27 @@ def _http_search(query: str, max_results: int = 3) -> list[dict[str, Any]]:
         return []
 
 
+# ========== Tavily MCP 连接池 (单例) ==========
+_mcp_pool = None
+
+
+def _get_tavily_mcp_pool():
+    """获取 Tavily MCP 连接池 (懒加载单例, 没 key 返回 None)."""
+    global _mcp_pool
+    if _mcp_pool is not None:
+        return _mcp_pool
+    api_key = os.getenv("TAVILY_API_KEY", "").strip()
+    if not api_key:
+        return None
+    from core.mcp_client import MCPClientPool
+    url = f"{_TAVILY_MCP_URL}?tavilyApiKey={api_key}"
+    _mcp_pool = MCPClientPool(url=url, pool_size=_POOL_SIZE)
+    logger.info("Tavily MCP pool created (size=%d)", _POOL_SIZE)
+    return _mcp_pool
+
+
 def web_search(query: str, max_results: int = 3) -> list[dict[str, Any]]:
-    """优先 Tavily 远程 MCP, 失败降级到裸 httpx.
+    """优先 Tavily MCP 连接池, 失败降级到裸 httpx.
 
     Returns:
         list of {"title", "url", "content", "score"} dicts
@@ -74,12 +102,11 @@ def web_search(query: str, max_results: int = 3) -> list[dict[str, Any]]:
     if not _is_available():
         return []
 
-    # 1) 优先: Tavily 远程 MCP
+    # 路径 1: Tavily 远程 MCP (复用 MCPClientPool, 支持并发)
     try:
-        from core.tavily_mcp_client import get_tavily_mcp_client
-        client = get_tavily_mcp_client()
-        if client is not None:
-            data = client.call_tool_sync("tavily_search", {
+        pool = _get_tavily_mcp_pool()
+        if pool is not None:
+            data = pool.call_tool_sync(_TAVILY_TOOL_NAME, {
                 "query": query,
                 "max_results": max_results,
             })
@@ -90,7 +117,7 @@ def web_search(query: str, max_results: int = 3) -> list[dict[str, Any]]:
     except Exception as e:
         logger.warning("Tavily MCP failed (%s), falling back to httpx", str(e)[:200])
 
-    # 2) Fallback: 裸 httpx
+    # 路径 2: 裸 httpx fallback
     return _http_search(query, max_results)
 
 
