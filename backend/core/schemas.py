@@ -144,6 +144,9 @@ class CandidateReport(BaseModel):
     recommendation_reason: str = Field(min_length=10, max_length=500)
     needs_human_review: bool = False
     human_review_reason: str | None = None
+    # AutoGen SelectorGroupChat 完整对话历史 (含 Assessor/Refiner 发言 + Selector 选人决策)
+    # 仅 use_autogen=True 时填充, 降级到单评或未启用反思时为 None
+    reflection_messages: list[dict] | None = None
 
 
 class BatchReport(BaseModel):

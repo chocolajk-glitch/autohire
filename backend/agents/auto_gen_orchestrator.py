@@ -1,14 +1,13 @@
-"""AutoGen 主从多智能体编排器.
+"""AutoGen 匹配反思编排器.
 
-架构:
-- Supervisor Agent (AssistantAgent): 有 4 个 tool, 决定调用顺序
-- JD Parser Tool: 调 LLM 解析 JD → ParsedJD
-- Resume Parser Tool: 调 LLM 解析简历 → ParsedResume
-- Matcher Team (SelectorGroupChat): Assessor + Refiner 协作评估 → MatchResult
-- Reporter Tool: 调 LLM 生成报告 → CandidateReport
+核心功能: SelectorGroupChat 双 Agent 协作评估
+- Assessor: 初评匹配度, 输出 MatchResult JSON
+- Refiner: 审查初评, 找出漏判/误判/加权偏差
+- 通过 Selector 动态选人 + 终止条件实现反思收敛
 
-Matcher 是唯一的 Agent 协作环节 (SelectorGroupChat):
-  Assessor 初评 → Refiner 审查修正 → Assessor 回应 → 输出最终结果
+调用方: planner.py (_run_pipeline_with_autogen_matcher)
+输入: 已解析的 jd_dict + resume_dict (由 planner 提前解析)
+输出: MatchResult dict
 """
 from __future__ import annotations
 
@@ -75,73 +74,7 @@ def _extract_json(text: str) -> dict | list:
 
 
 # ============================================================
-# Tool 1: JD Parser
-# ============================================================
-
-_JD_SYSTEM = """你是一个资深的招聘需求分析专家.
-把 JD 文本解析成结构化 JSON.
-
-【输出格式】只输出一个 JSON 对象, 不要任何其他文字.
-{
-  "job_title": "字符串",
-  "company": "字符串或null",
-  "salary_range": "字符串或null",
-  "location": "字符串或null",
-  "experience_years_min": 整数或null,
-  "experience_years_max": 整数或null,
-  "requirements": [
-    {"category": "required_skill|nice_to_have|experience|education|responsibility|other",
-     "description": "字符串", "weight": 1-10整数, "is_must_have": true/false}
-  ],
-  "summary": "10-1000字摘要"
-}"""
-
-
-def _parse_jd_tool(text: str) -> dict:
-    """Tool: 解析 JD 文本 → ParsedJD dict."""
-    from core.llm_factory import get_llm
-    from core.schemas import ParsedJD
-    from core.structured_output import structured_call
-
-    client = get_llm("minimax")
-    result = structured_call(client, system=_JD_SYSTEM, user=f"请解析以下 JD:\n\n{text}", output_model=ParsedJD)
-    return result.model_dump(exclude_none=True)
-
-
-# ============================================================
-# Tool 2: Resume Parser
-# ============================================================
-
-_RESUME_SYSTEM = """你是一个资深的简历解析专家.
-把简历文本解析成结构化 JSON.
-
-【输出格式】只输出一个 JSON 对象.
-{
-  "candidate_name": "字符串",
-  "email": "字符串或null",
-  "phone": "字符串或null",
-  "years_of_experience": 整数,
-  "educations": [{"school":"字符串","degree":"high_school|associate|bachelor|master|phd|other","major":"字符串或null","start_year":整数,"end_year":整数}],
-  "work_experiences": [{"company":"字符串","title":"字符串","start_date":"YYYY-MM","end_date":"YYYY-MM或null","description":"字符串或null"}],
-  "projects": [{"name":"字符串","role":"字符串或null","description":"字符串","tech_stack":["字符串"],"duration_months":整数或null}],
-  "skills": ["字符串"],
-  "self_summary": "字符串或null"
-}"""
-
-
-def _parse_resume_tool(text: str) -> dict:
-    """Tool: 解析简历文本 → ParsedResume dict."""
-    from core.llm_factory import get_llm
-    from core.schemas import ParsedResume
-    from core.structured_output import structured_call
-
-    client = get_llm("minimax")
-    result = structured_call(client, system=_RESUME_SYSTEM, user=f"请解析以下简历:\n\n{text}", output_model=ParsedResume)
-    return result.model_dump(exclude_none=True)
-
-
-# ============================================================
-# Tool 3: Matcher Team (SelectorGroupChat - Agent 协作)
+# Matcher Team (SelectorGroupChat - Assessor + Refiner 协作)
 # ============================================================
 
 _ASSESSOR_SYSTEM = """你是一个严格的招聘匹配度评估专家.
@@ -189,7 +122,12 @@ _REFINER_SYSTEM = """你是一个严格的质量审查员, 负责检查简历匹
   "adjustments": [{"requirement": "某要求", "old_score": 旧分, "new_score": 新分, "reason": "修正原因"}],
   "reflection_note": "一句话总结"
 }
-```"""
+```
+
+【终止协议 - 重要】
+- 如果你的审查认为评估**准确无误** (approved=true 且无 adjustments), 在 JSON 之后单独一行输出 "TERMINATE" 标志, 提前结束对话节省成本.
+- 如果你发现需要修正的问题 (approved=false 或有 adjustments), 不要输出 TERMINATE, 让 Assessor 重新评分.
+- TERMINATE 标志必须是独立的一行, 便于系统解析."""
 
 
 async def _run_matcher_team(jd_dict: dict, resume_dict: dict, route: str | None = None) -> dict:
@@ -253,8 +191,43 @@ async def _run_matcher_team(jd_dict: dict, resume_dict: dict, route: str | None 
     elapsed = time.time() - t0
     logger.info("matcher team: done in %.1fs, %d messages", elapsed, len(result.messages))
 
-    # 从消息历史中提取最终评估结果
-    return _extract_match_from_messages(result.messages)
+    # 从消息历史中提取最终评估结果 + 序列化对话历史给前端展示
+    match_dict = _extract_match_from_messages(result.messages)
+    serialized = _serialize_messages(result.messages)
+    return match_dict, serialized
+
+
+def _serialize_messages(messages: list) -> list[dict]:
+    """把 AutoGen 消息历史序列化成 dict 列表, 给前端展示反思对话.
+
+    保留: TextMessage (Agent 发言), SelectSpeakerEvent/SelectorEvent (Selector 选人决策)
+    跳过: StopMessage (终止信号), ToolCallSummaryMessage (本项目没用 tool)
+    字段: source / type / content / round / id / created_at
+    round 编号: 按 Agent 发言顺序递增 (Assessor=1, Refiner=1, Assessor=2, ...)
+    """
+    serialized = []
+    round_counter: dict[str, int] = {}
+    for m in messages:
+        msg_type = getattr(m, "type", type(m).__name__)
+        # 跳过终止信号 (不影响业务, 也不该展示给 HR)
+        if msg_type == "StopMessage":
+            continue
+        source = getattr(m, "source", "") or "unknown"
+        content = str(getattr(m, "content", ""))
+        # 剥离 MiniMax think 块 (前端不应该看到思考过程)
+        content = re.sub(r"思考过程.*?结论", "", content, flags=re.DOTALL)
+        content = re.sub(r"思考.*?\n\n", "", content, flags=re.DOTALL)
+        round_counter[source] = round_counter.get(source, 0) + 1
+        serialized.append({
+            "source": source,
+            "type": msg_type,
+            "content": content,
+            "round": round_counter[source],
+            "id": getattr(m, "id", None),
+            "created_at": getattr(m, "created_at", None).isoformat() if getattr(m, "created_at", None) else None,
+        })
+    logger.info("matcher team: serialized %d messages (skipped StopMessage)", len(serialized))
+    return serialized
 
 
 def _extract_match_from_messages(messages: list) -> dict:
@@ -272,251 +245,42 @@ def _extract_match_from_messages(messages: list) -> dict:
             continue
         try:
             data = _extract_json(content)
-            if isinstance(data, dict) and "overall_score" in data:
-                # 校验是否符合 MatchResult schema
-                last_valid = MatchResult.model_validate(data)
-                break
-        except Exception:
+        except Exception as e:
+            # 这条消息不是 JSON (常见于 Refiner 的审查结论是 markdown 表格), 跳过
+            logger.debug("matcher team: msg from %s not JSON, skip (%s)", source, str(e)[:80])
+            continue
+        if not isinstance(data, dict) or "overall_score" not in data:
+            logger.debug("matcher team: msg from %s has no overall_score, skip", source)
+            continue
+        try:
+            last_valid = MatchResult.model_validate(data)
+            break
+        except Exception as e:
+            # 提取到了含 overall_score 的 JSON, 但不符合 MatchResult schema
+            # (常见: LLM 偷懒只给总分, dimensions 为空或字段缺失)
+            logger.warning(
+                "matcher team: msg from %s has overall_score but failed schema: %s | raw keys=%s",
+                source, str(e)[:150], list(data.keys()),
+            )
             continue
 
     if last_valid is None:
-        # 兜底: 返回空结果
-        logger.warning("matcher team: no valid JSON found in messages, using fallback")
+        # 兜底: 必须符合 MatchResult 契约 (dimensions min_length=1), 否则自己就会抛 ValidationError
+        # 塞一条占位 dimension, overall_score=0 + confidence=low 标记这是降级结果
+        logger.warning("matcher team: no valid MatchResult in messages, using placeholder fallback")
         return MatchResult(
             overall_score=0,
-            dimensions=[],
+            dimensions=[{
+                "requirement": "解析失败占位项",
+                "candidate_evidence": "无",
+                "score": 0,
+                "reasoning": "SelectorGroupChat 未能产出合法 MatchResult, 此为兜底占位",
+            }],
             strengths=[],
-            weaknesses=[],
-            reflection_note="matcher team failed to produce valid output",
+            weaknesses=["匹配度评估失败, 建议人工复核"],
+            reflection_note="matcher team failed to produce valid output, placeholder used",
             confidence="low",
         ).model_dump(exclude_none=True)
 
     return last_valid.model_dump(exclude_none=True)
 
-
-# ============================================================
-# Tool 4: Reporter
-# ============================================================
-
-_REPORT_SYSTEM = """你是一个资深的招聘报告撰写专家.
-基于匹配度评估结果和面试题, 生成候选人最终评估报告.
-
-【输出 JSON】
-{
-  "candidate_name": "字符串",
-  "job_title": "字符串",
-  "recommendation": "strong_recommend|recommend|neutral|not_recommend",
-  "recommendation_reason": "10-200字解释",
-  "needs_human_review": true/false,
-  "human_review_reason": "字符串或null"
-}
-
-【recommendation 标准】
-- strong_recommend: overall_score >= 85, must_have 全满足
-- recommend: overall_score >= 70, must_have 满足率 >= 80%
-- neutral: overall_score >= 50, 有 1-2 个 must_have 弱
-- not_recommend: overall_score < 50
-
-【needs_human_review 触发】
-- overall_score 60-75 之间
-- confidence 为 low
-- must_have 有 evidence 为"无"
-- recommendation 为 neutral"""
-
-
-def _generate_report_tool(
-    jd_dict: dict, resume_dict: dict, match_dict: dict, questions_dict: dict | None = None
-) -> dict:
-    """Tool: 生成最终报告 → CandidateReport dict."""
-    from core.llm_factory import get_llm
-    from core.schemas import CandidateReport
-    from core.structured_output import structured_call
-
-    client = get_llm("minimax")
-    prompt = (
-        f"【JD 岗位】{jd_dict.get('job_title', '')}\n"
-        f"【候选人】{resume_dict.get('candidate_name', '')}, "
-        f"{resume_dict.get('years_of_experience', 0)} 年经验\n"
-        f"【匹配度结果】\n{json.dumps(match_dict, ensure_ascii=False, indent=2)}\n"
-    )
-    if questions_dict:
-        prompt += f"【面试题】\n{json.dumps(questions_dict, ensure_ascii=False, indent=2)}\n"
-    prompt += "请生成最终报告."
-
-    result = structured_call(client, system=_REPORT_SYSTEM, user=prompt, output_model=CandidateReport)
-    return result.model_dump(exclude_none=True)
-
-
-# ============================================================
-# Supervisor Agent (AutoGen AssistantAgent with tools)
-# ============================================================
-
-_SUPERVISOR_SYSTEM = """你是 AutoHire 招聘评估系统的主管 Agent.
-
-你有 4 个工具可用:
-1. parse_jd: 解析 JD 文本
-2. parse_resume: 解析简历文本
-3. run_match_assessment: 评估匹配度 (Agent 协作)
-4. generate_report: 生成最终报告
-
-请按顺序执行:
-1. 先解析 JD
-2. 再解析简历
-3. 然后评估匹配度
-4. 最后生成报告
-
-每一步完成后, 将结果传递给下一步. 所有任务完成后说 TERMINATE."""
-
-
-# ============================================================
-# Pipeline 入口
-# ============================================================
-
-@dataclass
-class AutoGenPipelineResult:
-    """AutoGen pipeline 的执行结果."""
-    jd: dict
-    resume: dict
-    match: dict
-    report: dict
-    matcher_messages: list[dict]  # Assessor + Refiner 的对话历史
-    duration_ms: int = 0
-
-
-async def run_auto_gen_pipeline(
-    jd_text: str,
-    resume_text: str,
-    *,
-    step_callback=None,
-) -> AutoGenPipelineResult:
-    """执行完整的 AutoGen 主从多智能体 Pipeline.
-
-    流程:
-    1. JD Parser Tool (独立 LLM 调用)
-    2. Resume Parser Tool (独立 LLM 调用)
-    3. Matcher Team (SelectorGroupChat: Assessor + Refiner 协作)
-    4. Reporter Tool (独立 LLM 调用)
-
-    Returns:
-        AutoGenPipelineResult 含所有中间结果
-    """
-
-    def _cb(name: str, status: str, dur: int = 0, **kw):
-        if step_callback:
-            step_callback(name, status, duration_ms=dur, **kw)
-
-    t0 = time.time()
-
-    # Step 1: Parse JD
-    _cb("parse_jd", "running")
-    t1 = time.time()
-    jd_dict = _parse_jd_tool(jd_text)
-    dur1 = int((time.time() - t1) * 1000)
-    _cb("parse_jd", "success", dur1)
-    logger.info("auto_gen: JD parsed in %dms, title=%s", dur1, jd_dict.get("job_title"))
-
-    # Step 2: Parse Resume
-    _cb("parse_resume", "running")
-    t2 = time.time()
-    resume_dict = _parse_resume_tool(resume_text)
-    dur2 = int((time.time() - t2) * 1000)
-    _cb("parse_resume", "success", dur2)
-    logger.info("auto_gen: Resume parsed in %dms, candidate=%s", dur2, resume_dict.get("candidate_name"))
-
-    # Step 3: Matcher Team (Agent 协作 - SelectorGroupChat)
-    _cb("match_with_reflection", "running")
-    t3 = time.time()
-    match_dict = await _run_matcher_team(jd_dict, resume_dict)
-    dur3 = int((time.time() - t3) * 1000)
-    _cb("match_with_reflection", "success", dur3)
-    logger.info(
-        "auto_gen: Match done in %dms, score=%d",
-        dur3, match_dict.get("overall_score", 0),
-    )
-
-    # Step 4: Generate Report
-    _cb("generate_report", "running")
-    t4 = time.time()
-    report_dict = _generate_report_tool(jd_dict, resume_dict, match_dict)
-    dur4 = int((time.time() - t4) * 1000)
-    _cb("generate_report", "success", dur4)
-    logger.info("auto_gen: Report done in %dms", dur4)
-
-    total = int((time.time() - t0) * 1000)
-    logger.info(
-        "auto_gen pipeline done in %.1fs, candidate=%s score=%d",
-        total / 1000, resume_dict.get("candidate_name"), match_dict.get("overall_score", 0),
-    )
-
-    return AutoGenPipelineResult(
-        jd=jd_dict,
-        resume=resume_dict,
-        match=match_dict,
-        report=report_dict,
-        matcher_messages=[],  # TODO: 从 SelectorGroupChat 提取
-        duration_ms=total,
-    )
-
-
-# ============================================================
-# 同步包装 (给 planner.py 调用)
-# ============================================================
-
-def run_auto_gen_pipeline_sync(
-    jd_text_or_path: str | Path,
-    resume_text_or_path: str | Path,
-    *,
-    jd_is_file: bool = False,
-    resume_is_file: bool = False,
-    run_interview_questions: bool = True,
-    enable_reflection: bool = True,
-    llm_provider: str = "minimax",
-    step_callback=None,
-) -> Any:
-    """同步版本, 供 planner.py 调用.
-
-    返回 PipelineContext (与 planner.py 兼容).
-    """
-    from agents.planner import PipelineContext
-
-    # 读取文本
-    if jd_is_file:
-        from core.tools.document_parser import parse_any
-        jd_text = parse_any(jd_text_or_path)
-    else:
-        jd_text = str(jd_text_or_path)
-
-    if resume_is_file:
-        from core.tools.document_parser import parse_any
-        resume_text = parse_any(resume_text_or_path)
-    else:
-        resume_text = str(resume_text_or_path)
-
-    # 路由检测
-    from agents.router import detect_route
-    route_decision = detect_route(None, resume_path=resume_text_or_path if resume_is_file else None)
-
-    # 跑 async pipeline
-    result = asyncio.run(run_auto_gen_pipeline(jd_text, resume_text, step_callback=step_callback))
-
-    # 转换为 PipelineContext
-    from core.schemas import (
-        CandidateReport,
-        MatchResult,
-        ParsedJD,
-        ParsedResume,
-    )
-
-    ctx = PipelineContext()
-    ctx.jd = ParsedJD.model_validate(result.jd)
-    ctx.resume = ParsedResume.model_validate(result.resume)
-    ctx.match = MatchResult.model_validate(result.match)
-    ctx.report = CandidateReport.model_validate(result.report)
-    ctx.needs_human_review = ctx.report.needs_human_review
-    ctx.human_review_reason = ctx.report.human_review_reason
-    ctx.metadata["route"] = route_decision.route
-    ctx.metadata["route_reason"] = route_decision.reason
-    ctx.metadata["pipeline"] = "autogen"
-    ctx.metadata["duration_ms"] = result.duration_ms
-
-    return ctx

@@ -144,6 +144,18 @@ function questionDifficulty(d) {
 }
 function getRankClass(i) { return i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '' }
 function getCandidateByName(name) { return candidates.value.find(c => c.candidate_name === name) }
+function turnAvatar(source) {
+  if (source === 'Assessor') return '🧑‍⚖️'
+  if (source === 'Refiner') return '🔍'
+  if (source === 'SelectorGroupChat') return '🎯'
+  return '💬'
+}
+function turnTypeLabel(type) {
+  if (type === 'TextMessage') return '发言'
+  if (type === 'SelectSpeakerEvent') return '选人'
+  if (type === 'SelectorEvent') return '决策推理'
+  return type
+}
 function stageIcon(s) {
   if (s.status === 'success') return '✓'
   if (s.status === 'failed') return '✗'
@@ -413,6 +425,14 @@ const handler = (eventName) => (e) => {
                   routeInfo.value = {
                     route: data.route,
                     reason: data.reason || '',
+                  }
+                }
+                // 反思对话 (后端推 'autogen_matcher_team' success, 附加 messages)
+                if (data.step === 'autogen_matcher_team' && data.messages && data.resume_name) {
+                  const c = candidates.value.find(x => x.candidate_name === data.resume_name)
+                  if (c) {
+                    c.reflection_messages = data.messages
+                    candidates.value = [...candidates.value]  // 触发响应式刷新
                   }
                 }
                 return
@@ -763,6 +783,21 @@ onMounted(loadData)
                   <div><span class="strengths">✓ 优势</span> {{ (c.match.strengths || []).join('; ') }}</div>
                   <div style="margin-top: 4px;"><span class="weaknesses">✗ 不足</span> {{ (c.match.weaknesses || []).join('; ') }}</div>
                   <div v-if="c.match.reflection_note" style="margin-top: 4px;"><span class="reflection">⟳ 反思</span> {{ c.match.reflection_note }}</div>
+                </div>
+              </details>
+              <details v-if="c.reflection_messages?.length" class="reflection-details">
+                <summary>🤖 反思对话（{{ c.reflection_messages.length }} 条消息）</summary>
+                <div class="reflection-thread">
+                  <div v-for="(m, mi) in c.reflection_messages" :key="mi"
+                       class="reflection-turn" :class="m.source.toLowerCase()">
+                    <div class="turn-header">
+                      <span class="turn-avatar">{{ turnAvatar(m.source) }}</span>
+                      <span class="turn-source">{{ m.source }}</span>
+                      <span class="turn-round">第 {{ m.round }} 轮</span>
+                      <span class="turn-type">{{ turnTypeLabel(m.type) }}</span>
+                    </div>
+                    <div class="turn-content">{{ m.content }}</div>
+                  </div>
                 </div>
               </details>
               <details v-if="c.interview_questions?.questions?.length">

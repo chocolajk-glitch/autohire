@@ -386,11 +386,12 @@ def _run_pipeline_with_autogen_matcher(
         jd_dict = ctx.jd.model_dump(exclude_none=True)
         resume_dict = ctx.resume.model_dump(exclude_none=True)
         # 跑异步 SelectorGroupChat (注入路由决策到 Assessor prompt)
-        match_dict = asyncio.run(_run_matcher_team(
+        match_dict, matcher_messages = asyncio.run(_run_matcher_team(
             jd_dict, resume_dict,
             route=ctx.metadata.get("route"),
         ))
         ctx.match = MatchResult.model_validate(match_dict)
+        ctx.metadata["matcher_messages"] = matcher_messages  # 给 report 用
         s.status = "success"
     except Exception as e:
         s.status = "failed"
@@ -410,11 +411,12 @@ def _run_pipeline_with_autogen_matcher(
             )
             s.status = "success"
             s.error = f"fallback to direct call: {str(e)[:100]}"
+            matcher_messages = []  # 降级路径无反思对话
         except Exception as e2:
             logger.exception("fallback matcher also failed")
             return ctx
     s.duration_ms = int((time.time() - t2) * 1000)
-    _cb(s.name, "success", duration_ms=s.duration_ms)
+    _cb(s.name, "success", duration_ms=s.duration_ms, messages=matcher_messages)
 
     # Step 4: 面试出题 (CrewAI)
     if run_interview_questions:
@@ -450,6 +452,8 @@ def _run_pipeline_with_autogen_matcher(
             provider=llm_provider,
             hitl_cfg=HITLConfig(),
         )
+        # 把反思对话挂到 report 上 (供前端 result 事件持久化)
+        ctx.report.reflection_messages = ctx.metadata.get("matcher_messages") or None
         ctx.needs_human_review = ctx.report.needs_human_review
         ctx.human_review_reason = ctx.report.human_review_reason
         s.status = "success"
