@@ -9,6 +9,9 @@ venv/
 env/
 
 .env
+# MCP 配置含敏感凭证 (GitHub PAT 等), 不进版本控制
+mcp_config.json
+mcp_config.local.json
 *.log
 .DS_Store
 .idea/
